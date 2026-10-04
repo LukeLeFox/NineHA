@@ -1,0 +1,85 @@
+name: Publish NineHA Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish verified ARMv7 IPA
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Verify IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IPA="Releases/NineHA-0.7.7-armv7.ipa"
+
+          (
+            cd Releases
+            sha256sum --check SHA256SUMS.txt
+          )
+
+          unzip -t "$IPA"
+
+          unzip -p "$IPA" Payload/NineHA.app/Info.plist |
+            grep -q '<string>org.nineha.client</string>'
+
+          unzip -p "$IPA" Payload/NineHA.app/Info.plist |
+            grep -q '<string>0.7.7</string>'
+
+          unzip -p "$IPA" Payload/NineHA.app/Info.plist |
+            grep -q '<string>45</string>'
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          NineHA 0.7.7 build 45
+
+          Native Home Assistant client for legacy iOS 9 devices.
+
+          Tested successfully on:
+          - iPad mini 1st generation
+          - iPhone 4S
+
+          Fresh installation:
+
+              ideviceinstaller install NineHA-0.7.7-armv7.ipa
+
+          The SHA-256 checksum is included as a separate asset.
+          EOF
+
+      - name: Create or update release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v0.7.7
+          IPA: Releases/NineHA-0.7.7-armv7.ipa
+          CHECKSUM: Releases/SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+
+          assets=(
+            "$IPA#NineHA 0.7.7 ARMv7 IPA"
+            "$CHECKSUM#SHA-256 checksum"
+          )
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "NineHA 0.7.7" \
+              --notes-file release-notes.md
+          fi
