@@ -41,6 +41,13 @@ make clean package FINALPACKAGE=1
 
 Il pacchetto IPA viene creato nella directory `packages/`.
 
+## Download
+
+La build finale precompilata per ARMv7 è disponibile qui:
+
+- [NineHA 0.7.7 build 45](Releases/NineHA-0.7.7-armv7.ipa)
+- [checksum SHA-256](Releases/SHA256SUMS.txt)
+
 ## Installazione
 
 Con il dispositivo collegato:

@@ -1,6 +1,7 @@
 .theos/
 packages/
 *.ipa
+!Releases/NineHA-0.7.7-armv7.ipa
 *.backup*
 *.bak*
 *.pre*
