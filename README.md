@@ -2,8 +2,8 @@
 
 NineHA è un client Home Assistant nativo pensato per dispositivi fermi a iOS 9.
 Il progetto viene compilato con Theos e Clang per ARMv7 ed è stato collaudato
-principalmente su iPad mini di prima generazione; iPhone 4S è tra i dispositivi
-di destinazione.
+su iPad mini di prima generazione e iPhone 4S. Su entrambi i dispositivi il
+Rebuilder e le funzioni principali risultano operativi.
 
 > Stato del progetto: sperimentale. NineHA non è un prodotto ufficiale di Home
 > Assistant e non è affiliato a Nabu Casa.
@@ -46,10 +46,12 @@ Il pacchetto IPA viene creato nella directory `packages/`.
 Con il dispositivo collegato:
 
 ```bash
-ideviceinstaller upgrade packages/org.nineha.client_0.7.7.ipa
+ideviceinstaller install NineHA-0.7.7-armv7.ipa
 ```
 
-Il nome esatto del file può variare in base alla versione di Theos.
+Per aggiornare un'installazione già presente si può usare invece
+`ideviceinstaller upgrade`. Il nome dell'IPA generata localmente può variare in
+base alla versione di Theos.
 
 ## Configurazione locale opzionale
 
@@ -81,7 +83,8 @@ Per segnalazioni riservate consultare [SECURITY.md](SECURITY.md).
 Il repository include SocketRocket nella directory `ThirdParty/SocketRocket`.
 La relativa licenza è conservata accanto ai sorgenti della libreria.
 
-## Licenze di terze parti
+## Licenza
 
-Le dipendenze incluse restano soggette alle rispettive licenze. Il titolare del
-progetto non ha ancora scelto una licenza per il codice NineHA.
+Il codice NineHA è distribuito con licenza MIT. Le dipendenze incluse restano
+soggette alle rispettive licenze; in particolare, la licenza di SocketRocket è
+conservata nella sua directory.

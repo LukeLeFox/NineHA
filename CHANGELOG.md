@@ -2,6 +2,8 @@
 
 ## 0.7.7 build 45
 
+- verificata l'installazione e l'esecuzione su iPad mini di prima generazione e
+  iPhone 4S;
 - layout Rebuilder responsivo per rotazione e ridimensionamento;
 - stile scuro compatto per luci e altri domini controllabili;
 - griglie sensori a tre colonne e valori più leggibili;
