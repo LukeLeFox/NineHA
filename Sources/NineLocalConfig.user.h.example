@@ -1,0 +1,18 @@
+/*
+ * Optional examples only. Copy this file to NineLocalConfig.user.h.
+ * Never place Home Assistant tokens or passwords in this file.
+ */
+
+#define NINEHA_NAS_SWITCH_ENTITY @"switch.example_nas"
+#define NINEHA_NAS_STATUS_ENTITY @"binary_sensor.example_nas_online"
+#define NINEHA_NAS_VM_STATUS_ENTITY @"binary_sensor.example_vm_running"
+
+#define NINEHA_SAFE_SWITCH_ENTITIES @[@"switch.example_device_one", @"switch.example_device_two"]
+
+#define NINEHA_NAS_GRACEFUL_ACTION @"script.example_nas_toggle"
+#define NINEHA_NAS_GRACEFUL_DOMAIN @"script"
+#define NINEHA_NAS_GRACEFUL_SERVICE @"example_nas_toggle"
+
+#define NINEHA_NAS_FORCE_ACTION @"rest_command.example_vm_stop"
+#define NINEHA_NAS_FORCE_DOMAIN @"rest_command"
+#define NINEHA_NAS_FORCE_SERVICE @"example_vm_stop"

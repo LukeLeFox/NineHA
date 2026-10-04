@@ -1,0 +1,15 @@
+.theos/
+packages/
+*.ipa
+*.backup*
+*.bak*
+*.pre*
+*.before-*
+.DS_Store
+*.mobileprovision
+*.p12
+*.cer
+*.key
+*.pem
+.env
+Sources/NineLocalConfig.user.h

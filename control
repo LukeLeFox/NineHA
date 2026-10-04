@@ -1,0 +1,8 @@
+Package: org.nineha.client
+Name: NineHA
+Version: 0.7.7
+Architecture: iphoneos-arm
+Maintainer: NineHA Contributors
+Author: NineHA Contributors
+Section: Applications
+Description: Native iOS 9 application - NineHA
