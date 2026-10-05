@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.7 build 46
+
+- aggiunta una nuova icona originale NineHA;
+- incluse le dimensioni legacy richieste da iPhone e iPad su iOS 9;
+- mantenuta invariata la compatibilità ARMv7 e la versione applicativa 0.7.7.
+
 ## 0.7.7 build 45
 
 - verificata l'installazione e l'esecuzione su iPad mini di prima generazione e
