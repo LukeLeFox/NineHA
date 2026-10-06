@@ -8,6 +8,18 @@ Rebuilder e le funzioni principali risultano operativi.
 > Stato del progetto: sperimentale. NineHA non è un prodotto ufficiale di Home
 > Assistant e non è affiliato a Nabu Casa.
 
+## Screenshot
+
+| Dashboard responsiva | Lovelace Rebuilder |
+|---|---|
+| ![Dashboard responsiva di NineHA](docs/screenshots/nineha-responsive-dashboard.png) | ![Lovelace Rebuilder di NineHA](docs/screenshots/nineha-rebuilder.png) |
+| Dashboard nativa | Impostazioni aggiornamento |
+| ![Dashboard nativa di NineHA](docs/screenshots/nineha-native-dashboard.png) | ![Impostazioni di aggiornamento di NineHA](docs/screenshots/nineha-refresh-settings.png) |
+| Configurazione iniziale | |
+| ![Configurazione iniziale di NineHA](docs/screenshots/nineha-login.png) | |
+
+Le schermate utilizzano indirizzi riservati alla documentazione e nomi dimostrativi; non contengono configurazioni Home Assistant private.
+
 ## Funzioni principali
 
 - autenticazione con token manuale e flusso OAuth sperimentale;
