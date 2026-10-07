@@ -125,6 +125,7 @@ static NSDictionary *NHAActionDict(id value) {
     NSString *domain = nil;
     NSString *service = nil;
     NSDictionary *payload = @{};
+    NSString *requestedService = nil;
 
     BOOL sensitive = NO;
     BOOL destructive = NO;
@@ -159,6 +160,8 @@ static NSDictionary *NHAActionDict(id value) {
             NHAActionString(action[@"service"])
             ?: NHAActionString(action[@"perform_action"]);
 
+        requestedService = fullService;
+
         if ([fullService isEqualToString:@"button.press"] &&
             [entity hasPrefix:@"button."] &&
             [self validIdentifier:entity]) {
@@ -186,11 +189,47 @@ static NSDictionary *NHAActionDict(id value) {
             destructive = YES;
 
         } else {
-            [self showTitle:@"Servizio non supportato"
-                    message:fullService
-                        ?: @"Azione non riconosciuta"
-                  presenter:presenter];
-            return;
+            NSArray *serviceParts =
+                [fullService componentsSeparatedByString:@"."];
+
+            if (serviceParts.count == 2 &&
+                [self validIdentifier:fullService]) {
+
+                domain = serviceParts[0];
+                service = serviceParts[1];
+
+                NSMutableDictionary *servicePayload =
+                    [NSMutableDictionary dictionary];
+
+                [servicePayload addEntriesFromDictionary:
+                    NHAActionDict(action[@"service_data"])];
+                [servicePayload addEntriesFromDictionary:
+                    NHAActionDict(action[@"data"])];
+
+                if ([self validIdentifier:entity] &&
+                    !servicePayload[@"entity_id"]) {
+                    servicePayload[@"entity_id"] = entity;
+                }
+
+                payload = [servicePayload copy];
+
+                // Le azioni generiche provengono dalla configurazione
+                // Lovelace, ma chiediamo comunque conferma prima di
+                // invocare servizi potenzialmente sensibili.
+                sensitive = YES;
+                destructive =
+                    [gesture isEqualToString:@"hold"] &&
+                    [@[@"rest_command", @"shell_command",
+                       @"homeassistant"] containsObject:domain];
+
+            } else {
+                [self showTitle:@"Servizio non supportato"
+                        message:fullService
+                            ?: @"Azione non riconosciuta"
+                      presenter:presenter];
+                return;
+            }
+
         }
 
     } else {
@@ -205,10 +244,9 @@ static NSDictionary *NHAActionDict(id value) {
             NHAActionDict(action[@"confirmation"])[@"text"]);
 
     if (!confirmationText.length && sensitive) {
-        confirmationText = destructive
-            ? @"Confermi l'arresto forzato della VM NAS?"
-            : @"Confermi l'accensione o lo spegnimento "
-              "graceful della VM NAS?";
+        confirmationText = [NSString stringWithFormat:
+            @"Confermi l'esecuzione di %@?",
+            requestedService ?: @"questa azione"];
     }
 
     if (confirmationText.length) {
