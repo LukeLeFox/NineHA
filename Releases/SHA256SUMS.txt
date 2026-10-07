@@ -1,1 +1,1 @@
-4979d88144117d6345fdb6d12f39879d186b080c46b2a8c2b45fbacb48668ebf  NineHA-0.7.7-armv7.ipa
+c6f3b3be7cdb2ae8453456482ef0acc6afcf789d80fb48d8fc2ee95d914b409f  NineHA-0.7.8-armv7.ipa
