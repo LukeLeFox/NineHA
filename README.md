@@ -29,9 +29,11 @@ Le schermate utilizzano indirizzi riservati alla documentazione e nomi dimostrat
 - adattatori nativi per card standard e per varie card custom, tra cui Mushroom,
   Button Card, Bubble Card ed Entity Progress Card;
 - supporto nativo di base per `media-control`;
-- azioni `tap_action`, `hold_action`, toggle, chiamate REST e Wake-on-LAN;
+- azioni `tap_action`, `hold_action`, toggle, `call-service`,
+  `perform-action`, chiamate REST e Wake-on-LAN;
 - pannello nativo per la luminosità delle luci e pannello dettagli entità;
-- interfaccia scura responsiva ottimizzata per schermi iPad e iPhone legacy.
+- interfaccia scura responsiva ottimizzata per schermi iPad e iPhone legacy;
+- rotazione automatica portrait/landscape, con tutti gli orientamenti su iPad.
 
 Le card non riconosciute vengono mostrate come non supportate anziché essere
 eseguite come codice web nel Rebuilder.
@@ -57,7 +59,7 @@ Il pacchetto IPA viene creato nella directory `packages/`.
 
 La build finale precompilata per ARMv7 è disponibile qui:
 
-- [NineHA 0.7.7 build 46](Releases/NineHA-0.7.7-armv7.ipa)
+- [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa)
 - [checksum SHA-256](Releases/SHA256SUMS.txt)
 
 ## Installazione
@@ -65,12 +67,22 @@ La build finale precompilata per ARMv7 è disponibile qui:
 Con il dispositivo collegato:
 
 ```bash
-ideviceinstaller install NineHA-0.7.7-armv7.ipa
+ideviceinstaller install NineHA-0.7.8-armv7.ipa
 ```
 
 Per aggiornare un'installazione già presente si può usare invece
 `ideviceinstaller upgrade`. Il nome dell'IPA generata localmente può variare in
 base alla versione di Theos.
+
+## Azioni Lovelace
+
+La build 47 interpreta sia la sintassi legacy `call-service` sia la sintassi
+`perform-action`. I campi `data`, `service_data` e il singolo
+`target.entity_id` vengono inoltrati al servizio Home Assistant dopo una
+conferma esplicita nell'interfaccia.
+
+Esempi, limiti e indicazioni per aggiungere nuovi servizi sono disponibili in
+[Azioni Lovelace e nuovi servizi](docs/lovelace-actions.md).
 
 ## Configurazione locale opzionale
 
@@ -84,6 +96,10 @@ cp Sources/NineLocalConfig.user.h.example Sources/NineLocalConfig.user.h
 
 Modificare quindi soltanto `Sources/NineLocalConfig.user.h`. Il file è escluso
 da Git. Non inserirvi token, password o altre credenziali.
+
+Questa configurazione è necessaria soltanto per gli adattatori nativi locali e
+per i toggle predefiniti esplicitamente autorizzati. Le normali azioni
+`call-service` e `perform-action` non richiedono modifiche al file locale.
 
 ## Privacy e sicurezza
 

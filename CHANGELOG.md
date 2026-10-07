@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.8 build 47
+
+- abilitate le azioni Lovelace generiche `call-service` e `perform-action`,
+  mantenendo conferma esplicita prima dell'esecuzione;
+- inoltrati al servizio Home Assistant `data`, `service_data` ed eventuale
+  `target.entity_id` della card;
+- dichiarati gli orientamenti portrait e landscape per iPhone e iPad, con
+  supporto portrait capovolto su iPad;
+- verificati rotazione, avvio e azione NAS su iPad mini di prima generazione;
+- mantenuta la configurazione locale opzionale separata dai sorgenti e
+  dall'IPA pubblica.
+
 ## 0.7.7 build 46
 
 - aggiunta una nuova icona originale NineHA;
