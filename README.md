@@ -8,6 +8,11 @@ Rebuilder e le funzioni principali risultano operativi.
 > Stato del progetto: sperimentale. NineHA non è un prodotto ufficiale di Home
 > Assistant e non è affiliato a Nabu Casa.
 
+> **Un'alternativa da conoscere:** quando ho iniziato NineHA non conoscevo
+> l'esistenza di [HA Dashboard](https://ha-dashboard.github.io/ios-app/).
+> Invito chiunque a valutarla come alternativa molto valida, perché è molto
+> più compatibile con altre versioni di iOS.
+
 ## Screenshot
 
 | Panoramica | Scheda stanza |
@@ -15,6 +20,10 @@ Rebuilder e le funzioni principali risultano operativi.
 | ![Panoramica per stanze](docs/screenshots/nineha-home.png) | ![Scheda di una stanza](docs/screenshots/nineha-room.png) |
 | Luminosità | Adattatore NAS |
 | ![Pannello dettagli di una luce](docs/screenshots/nineha-light.png) | ![Pannello dettagli del NAS](docs/screenshots/nineha-nas.png) |
+| Aspirapolvere | Telecomando TV |
+| ![Pannello dell'aspirapolvere](docs/screenshots/nineha-vacuum.png) | ![Telecomando Android TV / Fire TV](docs/screenshots/nineha-tv-remote.png) |
+| Dashboard personalizzata | Editor della dashboard |
+| ![Dashboard personalizzata](docs/screenshots/nineha-custom-dashboard.png) | ![Editor della dashboard](docs/screenshots/nineha-dashboard-editor.png) |
 | Termostato | Menu |
 | ![Pannello dettagli del termostato](docs/screenshots/nineha-climate.png) | ![Menu laterale](docs/screenshots/nineha-menu.png) |
 | Accesso | Verticale |
@@ -80,6 +89,7 @@ make clean package DEMO=1
 
 La build finale precompilata per ARMv7 è disponibile qui:
 
+- [NineHA 0.8.1 build 49](Releases/NineHA-0.8.1-armv7.ipa)
 - [NineHA 0.8.0 build 48](Releases/NineHA-0.8.0-armv7.ipa)
 - [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa) (serie precedente,
   con Lovelace Rebuilder)
@@ -90,7 +100,7 @@ La build finale precompilata per ARMv7 è disponibile qui:
 Con il dispositivo collegato:
 
 ```bash
-ideviceinstaller install NineHA-0.8.0-armv7.ipa
+ideviceinstaller install NineHA-0.8.1-armv7.ipa
 ```
 
 Per aggiornare un'installazione già presente si può usare invece

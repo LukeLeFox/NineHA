@@ -11,7 +11,9 @@
 - pannello media completo: accensione, brani, volume, scelta sorgente/app;
 - telecomando per Android TV / Fire TV (croce direzionale, OK, indietro,
   home, menu, volume) quando esiste l'entità `remote` del dispositivo; sono
-  inviati solo nomi di tasto noti, mai comandi ADB liberi.
+  inviati solo nomi di tasto noti, mai comandi ADB liberi;
+- casa demo con robot e TV, nuove schermate; segnalata l'alternativa
+  HA Dashboard nella documentazione.
 
 ## 0.8.0 build 48
 
