@@ -22,6 +22,8 @@ NineHA_FILES = main.m \
 	Sources/NineAreasLoader.m \
 	Sources/NineLiveSocket.m \
 	Sources/NineDemoData.m \
+	Sources/NineCustomDashboards.m \
+	Sources/NineDashboardEditor.m \
 	ThirdParty/SocketRocket/SRWebSocket.m
 
 NineHA_FRAMEWORKS = UIKit Foundation Security CFNetwork CoreText

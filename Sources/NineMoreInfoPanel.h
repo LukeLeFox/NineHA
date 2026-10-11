@@ -14,6 +14,14 @@
 - (void)moreInfo:(NineMoreInfoPanel *)panel
    nasPowerForce:(BOOL)force;
 
+// Scelta da un elenco (sorgente, velocità di aspirazione...).
+- (void)moreInfo:(NineMoreInfoPanel *)panel
+      chooseFrom:(NSArray *)options
+           title:(NSString *)title
+         current:(NSString *)current
+          source:(UIView *)source
+      completion:(void (^)(NSString *choice))completion;
+
 - (void)moreInfoDidClose:(NineMoreInfoPanel *)panel;
 
 @end
@@ -28,10 +36,20 @@
 @property (nonatomic, weak) id<NineMoreInfoDelegate> delegate;
 @property (nonatomic, copy, readonly) NSString *entityID;
 
+/*
+ * related: entità collegate allo stesso dispositivo, per esempio
+ * @{@"remote": entity_id, @"battery": entity_id}; relatedStates ne
+ * contiene gli stati e viene aggiornato con updateRelatedStates:.
+ */
 - (instancetype)initWithEntity:(NSDictionary *)entity
                       registry:(NSDictionary *)registry
                           area:(NSString *)area
-                           nas:(NineNASAdapter *)nas;
+                           nas:(NineNASAdapter *)nas
+                       related:(NSDictionary *)related
+                 relatedStates:(NSDictionary *)relatedStates;
+
+@property (nonatomic, copy, readonly) NSDictionary *related;
+- (void)updateRelatedStates:(NSDictionary *)relatedStates;
 
 - (void)showInView:(UIView *)host;
 - (void)updateEntity:(NSDictionary *)entity;

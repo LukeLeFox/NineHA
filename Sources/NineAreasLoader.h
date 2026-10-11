@@ -14,7 +14,7 @@ typedef void (^NineAreasCompletion)(
 
 /*
  * Disponibili quando la completion viene invocata con successo.
- * entityRegistry: entity_id -> @{name, icon, area, hidden,
+ * entityRegistry: entity_id -> @{name, icon, area, device, hidden,
  *                 category, precision}
  * areaIcons:      nome stanza -> icona mdi
  * areaNames (completion): ordine del registro Home Assistant.

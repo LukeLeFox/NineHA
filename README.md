@@ -35,6 +35,10 @@ indirizzo riservato alla documentazione: nessun dato reale.
   stanza con l'elenco completo raggruppato per tipo;
 - pannello dettagli nativo: slider di luminosità, interruttore, tapparelle,
   termostato, lettori multimediali, scene, script e pulsanti;
+- controlli per aspirapolvere (avvio, stop, base, velocità) e telecomando
+  per Android TV / Fire TV con croce direzionale, home, indietro e volume;
+- dashboard personalizzate con sezioni ed entità scelte, gestite dal menu
+  laterale e impostabili come schermata iniziale;
 - tocco sull'icona per accendere/spegnere, tocco sul tile per i dettagli,
   pressione prolungata per preferiti e per nascondere entità;
 - aggiornamenti live tramite WebSocket, con fallback REST;

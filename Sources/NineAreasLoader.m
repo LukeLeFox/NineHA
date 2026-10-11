@@ -413,6 +413,10 @@ didReceiveMessage:(id)message {
 
         if (name.length) info[@"area"] = name;
 
+        id device = entry[@"di"];
+        if ([device isKindOfClass:[NSString class]] && [device length])
+            info[@"device"] = device;
+
         id label = entry[@"en"];
         if ([label isKindOfClass:[NSString class]] && [label length])
             info[@"name"] = label;

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.1 build 49
+
+- dashboard personalizzate: create dal menu laterale, con sezioni ed entità
+  scelte da elenco ricercabile, riordino anche tra sezioni e dashboard
+  all'avvio; "Aggiungi a dashboard" dal menu di ogni tile;
+- controlli per aspirapolvere: avvia, pausa, ferma, ritorno alla base,
+  localizza, pulizia spot e velocità di aspirazione, secondo le funzioni
+  supportate, con livello batteria dal sensore del dispositivo;
+- pannello media completo: accensione, brani, volume, scelta sorgente/app;
+- telecomando per Android TV / Fire TV (croce direzionale, OK, indietro,
+  home, menu, volume) quando esiste l'entità `remote` del dispositivo; sono
+  inviati solo nomi di tasto noti, mai comandi ADB liberi.
+
 ## 0.8.0 build 48
 
 - nuova dashboard nativa in stile app ufficiale Home Assistant: tema scuro HA,

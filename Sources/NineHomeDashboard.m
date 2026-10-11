@@ -1,6 +1,8 @@
 #import "NineHomeDashboard.h"
 #import "NineAreasLoader.h"
 #import "NineControls.h"
+#import "NineCustomDashboards.h"
+#import "NineDashboardEditor.h"
 #import "NineDemoData.h"
 #import "NineDashboard.h"
 #import "NineEntity.h"
@@ -37,6 +39,8 @@ static CGFloat const NineTabsHeight = 46;
 
 // Preferenze locali
 @property (nonatomic, copy) NSString *selectedTab;
+@property (nonatomic, copy) NSString *currentDashboardID;   // nil = panoramica
+@property (nonatomic, copy) NSString *locationName;
 @property (nonatomic, strong) NSMutableArray *favorites;
 @property (nonatomic, strong) NSMutableSet *hiddenEntities;
 
@@ -124,15 +128,9 @@ static CGFloat const NineTabsHeight = 46;
         NineIconBarItem(@"menu", self, @selector(openMenu));
     self.navigationItem.leftBarButtonItem.accessibilityLabel = @"Menu";
 
-    UIBarButtonItem *search =
-        NineIconBarItem(@"magnify", self, @selector(openList));
-    search.accessibilityLabel = @"Cerca entità";
-
-    UIBarButtonItem *refresh =
-        NineIconBarItem(@"refresh", self, @selector(manualRefresh));
-    refresh.accessibilityLabel = @"Aggiorna";
-
-    self.navigationItem.rightBarButtonItems = @[search, refresh];
+    self.currentDashboardID = [NineCustomDashboards
+        startDashboardIDForServer:self.auth.serverURL];
+    [self updateNavigationItems];
 
     self.tabsScroll = [[UIScrollView alloc] init];
     self.tabsScroll.backgroundColor = NTHeader();
@@ -164,6 +162,12 @@ static CGFloat const NineTabsHeight = 46;
         addObserver:self
            selector:@selector(refreshSettingsChanged)
                name:NineRefreshSettingsChangedNotification
+             object:nil];
+
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(customDashboardsChanged)
+               name:NineCustomDashboardsChangedNotification
              object:nil];
 
     [[NSNotificationCenter defaultCenter]
@@ -242,15 +246,163 @@ static CGFloat const NineTabsHeight = 46;
 
     CGRect bounds = self.view.bounds;
 
-    self.tabsScroll.frame = CGRectMake(0, 0, bounds.size.width, NineTabsHeight);
-    self.contentScroll.frame = CGRectMake(0, NineTabsHeight,
-        bounds.size.width, bounds.size.height - NineTabsHeight);
+    // Le dashboard personalizzate non hanno schede per stanza.
+    CGFloat tabs = self.currentDashboardID ? 0 : NineTabsHeight;
+    self.tabsScroll.hidden = tabs == 0;
+    self.tabsScroll.frame = CGRectMake(0, 0, bounds.size.width, tabs);
+    self.contentScroll.frame = CGRectMake(0, tabs,
+        bounds.size.width, bounds.size.height - tabs);
     self.spinner.center = CGPointMake(bounds.size.width / 2,
                                       bounds.size.height / 2);
 
     if (fabs(self.lastLayoutWidth - bounds.size.width) > 0.5) {
         [self rebuildIfNeeded:YES];
     }
+}
+
+#pragma mark - Dashboard personalizzate
+
+- (NSDictionary *)currentDashboard {
+    return [NineCustomDashboards dashboardWithID:self.currentDashboardID
+                                          server:self.auth.serverURL];
+}
+
+- (void)updateNavigationItems {
+    NSDictionary *custom = [self currentDashboard];
+    self.title = custom ? custom[@"name"] : (self.locationName ?: @"Home");
+
+    UIBarButtonItem *search =
+        NineIconBarItem(@"magnify", self, @selector(openList));
+    search.accessibilityLabel = @"Cerca entità";
+
+    UIBarButtonItem *refresh =
+        NineIconBarItem(@"refresh", self, @selector(manualRefresh));
+    refresh.accessibilityLabel = @"Aggiorna";
+
+    if (custom) {
+        UIBarButtonItem *edit =
+            NineIconBarItem(@"pencil", self, @selector(editCurrentDashboard));
+        edit.accessibilityLabel = @"Modifica dashboard";
+        self.navigationItem.rightBarButtonItems = @[search, edit, refresh];
+    } else {
+        self.navigationItem.rightBarButtonItems = @[search, refresh];
+    }
+}
+
+- (void)customDashboardsChanged {
+    if (self.currentDashboardID && ![self currentDashboard]) {
+        self.currentDashboardID = nil;
+    }
+    [self updateNavigationItems];
+    if (self.isViewLoaded) {
+        [self.view setNeedsLayout];
+        [self rebuildIfNeeded:YES];
+    }
+}
+
+- (void)showDashboard:(NSString *)identifier {
+    self.currentDashboardID = identifier;
+    if (!identifier) self.selectedTab = NineHomeTab;
+    [self updateNavigationItems];
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+    [self rebuildIfNeeded:YES];
+    [self.contentScroll setContentOffset:CGPointZero animated:NO];
+}
+
+- (void)editCurrentDashboard {
+    if (!self.currentDashboardID) return;
+    NineDashboardEditor *editor = [[NineDashboardEditor alloc]
+        initWithServerURL:self.auth.serverURL
+              dashboardID:self.currentDashboardID
+                   states:self.stateByID
+                 registry:self.registry];
+    [self.navigationController pushViewController:editor animated:YES];
+}
+
+- (void)createDashboardAddingEntity:(NSString *)entityID {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Nuova dashboard"
+                         message:@"Scegli un nome, poi aggiungi le entità."
+                  preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.placeholder = @"Es. Soggiorno sera";
+        field.autocapitalizationType = UITextAutocapitalizationTypeSentences;
+    }];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Crea"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction *a) {
+        NSString *identifier = [NineCustomDashboards
+            createDashboardNamed:alert.textFields.firstObject.text
+                          server:self.auth.serverURL];
+
+        if (entityID) {
+            [NineCustomDashboards addEntity:entityID
+                                toDashboard:identifier
+                                     server:self.auth.serverURL];
+            [self showDashboard:identifier];
+        } else {
+            [self showDashboard:identifier];
+            [self editCurrentDashboard];
+        }
+    }]];
+
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)chooseDashboardForEntity:(NSString *)entityID source:(UIView *)source {
+    NSArray *dashboards = [NineCustomDashboards
+        dashboardsForServer:self.auth.serverURL];
+
+    UIAlertController *menu = [UIAlertController
+        alertControllerWithTitle:@"Aggiungi a dashboard"
+                         message:nil
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+
+    for (NSDictionary *dashboard in dashboards) {
+        NSString *identifier = dashboard[@"id"];
+        [menu addAction:[UIAlertAction actionWithTitle:dashboard[@"name"]
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *a) {
+            [NineCustomDashboards addEntity:entityID
+                                toDashboard:identifier
+                                     server:self.auth.serverURL];
+        }]];
+    }
+
+    [menu addAction:[UIAlertAction actionWithTitle:@"Nuova dashboard…"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        [self createDashboardAddingEntity:entityID];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+
+    menu.popoverPresentationController.sourceView = source;
+    menu.popoverPresentationController.sourceRect = source.bounds;
+    [self presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)removeFromCurrentDashboard:(NSString *)entityID {
+    NSMutableDictionary *dashboard = [[self currentDashboard] mutableCopy];
+    if (!dashboard) return;
+
+    NSMutableArray *sections = [NSMutableArray array];
+    for (NSDictionary *section in dashboard[@"sections"]) {
+        NSMutableDictionary *copy = [section mutableCopy];
+        NSMutableArray *items = [copy[@"items"] mutableCopy];
+        [items removeObject:entityID];
+        copy[@"items"] = items;
+        [sections addObject:copy];
+    }
+    dashboard[@"sections"] = sections;
+    [NineCustomDashboards saveDashboard:dashboard server:self.auth.serverURL];
 }
 
 - (void)applicationDidBecomeActive {
@@ -322,7 +474,8 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
 - (void)fetchInstanceName {
 #ifdef NINEHA_DEMO
-    self.title = [NineDemoData locationName];
+    self.locationName = [NineDemoData locationName];
+    [self updateNavigationItems];
     return;
 #endif
     __weak typeof(self) weakSelf = self;
@@ -357,7 +510,8 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             if (!name.length) return;
 
             dispatch_async(dispatch_get_main_queue(), ^{
-                weakSelf.title = name;
+                weakSelf.locationName = name;
+                [weakSelf updateNavigationItems];
             });
         }] resume];
     }];
@@ -844,6 +998,22 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 }
 
 - (NSDictionary *)buildModel {
+    NSDictionary *custom = [self currentDashboard];
+    if (custom) {
+        NSMutableArray *sections = [NSMutableArray array];
+        for (NSDictionary *section in custom[@"sections"]) {
+            NSMutableArray *items = [NSMutableArray array];
+            for (NSString *entityID in section[@"items"]) {
+                if (![self.hiddenEntities containsObject:entityID])
+                    [items addObject:entityID];
+            }
+            if (!items.count) continue;
+            [sections addObject:@{@"title": section[@"title"] ?: @"",
+                                  @"items": items}];
+        }
+        return @{@"areas": @[], @"sections": sections, @"badges": @[]};
+    }
+
     BOOL overview = [self.selectedTab isEqualToString:NineHomeTab];
     NSMutableDictionary *byArea = [NSMutableDictionary dictionary];
     NSMutableArray *loose = [NSMutableArray array];
@@ -965,6 +1135,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
     NSMutableString *signature = [NSMutableString string];
     [signature appendString:self.selectedTab];
+    [signature appendFormat:@"|%@", self.currentDashboardID ?: @"-"];
     for (NSDictionary *section in model[@"sections"]) {
         [signature appendFormat:@"|%@:", section[@"title"]];
         [signature appendString:[section[@"items"] componentsJoinedByString:@","]];
@@ -1164,6 +1335,13 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     CGFloat usable = width - margin * 2;
     NSInteger columns = MAX(1, MIN(3,
         (NSInteger)floorf((usable + columnGap) / (420 + columnGap))));
+
+    // Poche sezioni: meglio colonne larghe che spazio vuoto.
+    NSInteger sectionCount = 0;
+    for (NSDictionary *section in model[@"sections"]) {
+        if ([section[@"items"] count]) sectionCount++;
+    }
+    columns = MAX(1, MIN(columns, sectionCount));
     CGFloat columnWidth = floorf((usable -
         columnGap * (columns - 1)) / columns);
     CGFloat minimumTile = wide ? 200 : 140;
@@ -1247,8 +1425,10 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
         empty.textAlignment = NSTextAlignmentCenter;
         empty.textColor = NTSecondaryText();
         empty.font = NTFont(15);
-        empty.text = @"Nessuna entità da mostrare.\n"
-                      "Usa la ricerca per aggiungere preferiti.";
+        empty.text = self.currentDashboardID
+            ? @"Dashboard vuota.\nTocca la matita in alto per aggiungere entità."
+            : @"Nessuna entità da mostrare.\n"
+               "Usa la ricerca per aggiungere preferiti.";
         [self.contentScroll addSubview:empty];
         contentHeight = y + 140;
     }
@@ -1265,7 +1445,8 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     NSString *subtitle = section[@"subtitle"];
 
     UIButton *header = [UIButton buttonWithType:UIButtonTypeCustom];
-    header.frame = CGRectMake(0, 0, width, subtitle.length ? 50 : 40);
+    header.frame = CGRectMake(0, 0, width, subtitle.length ? 50
+        : ([section[@"title"] length] ? 40 : 4));
     header.accessibilityIdentifier = area;
     header.accessibilityLabel = section[@"title"];
     header.userInteractionEnabled = area.length > 0;
@@ -1458,6 +1639,15 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
         if (!changed || [changed containsObject:entityID]) {
             [self.moreInfo updateEntity:self.stateByID[entityID]];
         }
+        NSArray *relatedIDs = [self.moreInfo.related allValues];
+        BOOL relatedChanged = !changed;
+        for (NSString *other in relatedIDs) {
+            if ([changed containsObject:other]) relatedChanged = YES;
+        }
+        if (relatedChanged && relatedIDs.count) {
+            [self.moreInfo updateRelatedStates:
+                [self statesForRelated:self.moreInfo.related]];
+        }
         if (nasChanged) [self.moreInfo refreshNAS];
     }
 }
@@ -1604,17 +1794,33 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
         [self rebuildIfNeeded:YES];
     }]];
 
-    [menu addAction:[UIAlertAction actionWithTitle:@"Nascondi dalla Home"
-                                             style:UIAlertActionStyleDestructive
-                                           handler:^(UIAlertAction *a) {
-        [self.hiddenEntities addObject:entityID];
-        [self.favorites removeObject:entityID];
-        [self saveFavorites];
-        [[NSUserDefaults standardUserDefaults]
-            setObject:[self.hiddenEntities allObjects]
-               forKey:@"NineHA.HiddenEntities"];
-        [self rebuildIfNeeded:YES];
-    }]];
+    if (self.currentDashboardID) {
+        [menu addAction:[UIAlertAction actionWithTitle:@"Rimuovi da questa dashboard"
+                                                 style:UIAlertActionStyleDestructive
+                                               handler:^(UIAlertAction *a) {
+            [self removeFromCurrentDashboard:entityID];
+        }]];
+    } else {
+        [menu addAction:[UIAlertAction actionWithTitle:@"Aggiungi a dashboard…"
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *a) {
+            [self chooseDashboardForEntity:entityID source:tile];
+        }]];
+    }
+
+    if (!self.currentDashboardID) {
+        [menu addAction:[UIAlertAction actionWithTitle:@"Nascondi dalla Home"
+                                                 style:UIAlertActionStyleDestructive
+                                               handler:^(UIAlertAction *a) {
+            [self.hiddenEntities addObject:entityID];
+            [self.favorites removeObject:entityID];
+            [self saveFavorites];
+            [[NSUserDefaults standardUserDefaults]
+                setObject:[self.hiddenEntities allObjects]
+                   forKey:@"NineHA.HiddenEntities"];
+            [self rebuildIfNeeded:YES];
+        }]];
+    }
 
     [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
                                              style:UIAlertActionStyleCancel
@@ -1638,14 +1844,65 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
     [self.moreInfo removeFromSuperview];
 
+    NSDictionary *related = [self relatedEntitiesFor:entityID];
+
     NineMoreInfoPanel *panel = [[NineMoreInfoPanel alloc]
         initWithEntity:entity
               registry:[self registryFor:entityID]
                   area:[self areaFor:entityID]
-                   nas:self.nas];
+                   nas:self.nas
+               related:related
+         relatedStates:[self statesForRelated:related]];
     panel.delegate = self;
     self.moreInfo = panel;
+
+    // Gli aggiornamenti live delle entità collegate devono arrivare.
+    NSMutableSet *watched = [self.watchedIDs mutableCopy] ?: [NSMutableSet set];
+    [watched addObjectsFromArray:[related allValues]];
+    self.watchedIDs = watched;
+
     [panel showInView:host];
+}
+
+// Telecomando e batteria appartenenti allo stesso dispositivo.
+- (NSDictionary *)relatedEntitiesFor:(NSString *)entityID {
+    NSMutableDictionary *related = [NSMutableDictionary dictionary];
+    NSString *domain = NEDomain(entityID);
+    NSString *device = [self registryFor:entityID][@"device"];
+    NSString *object = [entityID substringFromIndex:domain.length + 1];
+
+    if ([domain isEqualToString:@"media_player"]) {
+        NSString *sameName = [@"remote." stringByAppendingString:object];
+        if (self.stateByID[sameName]) related[@"remote"] = sameName;
+    }
+
+    if (device.length) {
+        for (NSString *other in self.stateByID) {
+            if ([other isEqualToString:entityID]) continue;
+            if (![[self registryFor:other][@"device"] isEqualToString:device])
+                continue;
+
+            if ([domain isEqualToString:@"media_player"] && !related[@"remote"] &&
+                [other hasPrefix:@"remote."]) {
+                related[@"remote"] = other;
+            }
+            if ([domain isEqualToString:@"vacuum"] && !related[@"battery"] &&
+                [other hasPrefix:@"sensor."] &&
+                [NEDeviceClass(self.stateByID[other]) isEqualToString:@"battery"]) {
+                related[@"battery"] = other;
+            }
+        }
+    }
+
+    return related;
+}
+
+- (NSDictionary *)statesForRelated:(NSDictionary *)related {
+    NSMutableDictionary *states = [NSMutableDictionary dictionary];
+    for (NSString *entityID in [related allValues]) {
+        if (self.stateByID[entityID]) states[entityID] = self.stateByID[entityID];
+    }
+    return states;
 }
 
 #pragma mark - NineMoreInfoDelegate
@@ -1661,6 +1918,37 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
 - (void)moreInfo:(NineMoreInfoPanel *)panel nasPowerForce:(BOOL)force {
     [self requestNASPowerForce:force];
+}
+
+- (void)moreInfo:(NineMoreInfoPanel *)panel
+      chooseFrom:(NSArray *)options
+           title:(NSString *)title
+         current:(NSString *)current
+          source:(UIView *)source
+      completion:(void (^)(NSString *choice))completion {
+    UIAlertController *menu = [UIAlertController
+        alertControllerWithTitle:title
+                         message:nil
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+
+    for (id option in options) {
+        if (![option isKindOfClass:[NSString class]]) continue;
+        BOOL selected = [option isEqual:current];
+        [menu addAction:[UIAlertAction
+            actionWithTitle:selected ? [@"✓ " stringByAppendingString:option] : option
+                      style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *a) {
+            completion(option);
+        }]];
+    }
+
+    [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+
+    menu.popoverPresentationController.sourceView = source;
+    menu.popoverPresentationController.sourceRect = source.bounds;
+    [self presentViewController:menu animated:YES completion:nil];
 }
 
 - (void)moreInfoDidClose:(NineMoreInfoPanel *)panel {
@@ -1769,9 +2057,41 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     }
 
     if ([domain isEqualToString:@"media_player"]) {
+        if ([service isEqualToString:@"select_source"]) {
+            NSArray *sources = attrs[@"source_list"];
+            return data.count == 1 && [sources isKindOfClass:[NSArray class]] &&
+                [sources containsObject:data[@"source"]];
+        }
+        if ([service isEqualToString:@"volume_mute"]) {
+            return data.count == 1 &&
+                [data[@"is_volume_muted"] isKindOfClass:[NSNumber class]];
+        }
         return [@[@"turn_on", @"turn_off", @"media_play_pause",
-                  @"media_next_track", @"media_previous_track"]
+                  @"media_next_track", @"media_previous_track",
+                  @"volume_up", @"volume_down"]
             containsObject:service] && data.count == 0;
+    }
+
+    if ([domain isEqualToString:@"vacuum"]) {
+        if ([service isEqualToString:@"set_fan_speed"]) {
+            NSArray *speeds = attrs[@"fan_speed_list"];
+            return data.count == 1 && [speeds isKindOfClass:[NSArray class]] &&
+                [speeds containsObject:data[@"fan_speed"]];
+        }
+        return [@[@"start", @"pause", @"stop", @"return_to_base",
+                  @"locate", @"clean_spot"] containsObject:service] &&
+            data.count == 0;
+    }
+
+    if ([domain isEqualToString:@"remote"]) {
+        // Solo tasti con nome noto: un testo libero verrebbe eseguito
+        // come comando shell ADB dall'integrazione Android TV.
+        NSSet *keys = [NSSet setWithArray:@[
+            @"UP", @"DOWN", @"LEFT", @"RIGHT", @"CENTER",
+            @"DPAD_UP", @"DPAD_DOWN", @"DPAD_LEFT", @"DPAD_RIGHT", @"DPAD_CENTER",
+            @"BACK", @"HOME", @"MENU", @"VOLUME_UP", @"VOLUME_DOWN"]];
+        return [service isEqualToString:@"send_command"] && data.count == 1 &&
+            [keys containsObject:data[@"command"]];
     }
 
     if ([domain isEqualToString:@"scene"] || [domain isEqualToString:@"script"])
@@ -1969,8 +2289,19 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     } completion:^(BOOL finished) {
         [self closeDrawerImmediately];
 
+        if (action >= 100) {
+            NSArray *dashboards = [NineCustomDashboards
+                dashboardsForServer:self.auth.serverURL];
+            NSInteger index = action - 100;
+            if (index < (NSInteger)dashboards.count) {
+                [self showDashboard:dashboards[index][@"id"]];
+            }
+            return;
+        }
+
         switch (action) {
-            case 1: [self selectTab:NineHomeTab]; break;
+            case 1: [self showDashboard:nil]; break;
+            case 9: [self createDashboardAddingEntity:nil]; break;
             case 2: [self openList]; break;
             case 3: [self manualRefresh]; break;
             case 4: [self openServers]; break;
@@ -2021,7 +2352,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
     UILabel *name = [[UILabel alloc]
         initWithFrame:CGRectMake(58, 28, panelWidth - 70, 34)];
-    name.text = self.title ?: @"Home";
+    name.text = self.locationName ?: @"Home";
     name.font = NTMediumFont(20);
     name.textColor = NTText();
     [panel addSubview:name];
@@ -2031,17 +2362,43 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     divider.backgroundColor = NTBorder();
     [panel addSubview:divider];
 
-    NSArray *items = @[
-        @[@1, @"view-dashboard", @"Panoramica"],
+    NSMutableArray *items = [NSMutableArray arrayWithObject:
+        @[@1, @"view-dashboard", @"Panoramica"]];
+
+    NSArray *dashboards = [NineCustomDashboards
+        dashboardsForServer:self.auth.serverURL];
+    for (NSUInteger i = 0; i < dashboards.count; i++) {
+        NSString *icon = dashboards[i][@"icon"] ?: @"view-dashboard-variant";
+        [items addObject:@[@(100 + i), icon, dashboards[i][@"name"]]];
+    }
+
+    [items addObjectsFromArray:@[
+        @[@9, @"plus", @"Nuova dashboard"],
+        @[@0, @"", @""],
         @[@2, @"format-list-bulleted", @"Entità"],
         @[@3, @"refresh", @"Aggiorna"],
         @[@0, @"", @""],
         @[@4, @"server-network", @"Server"],
         @[@5, @"cog", @"Aggiornamenti"],
         @[@6, @"account-key", @"Configurazione e accesso"]
-    ];
+    ]];
 
-    CGFloat y = 86;
+    // Voci scorrevoli: le dashboard possono essere molte.
+    UIScrollView *list = [[UIScrollView alloc]
+        initWithFrame:CGRectMake(0, 77, panelWidth, height - 77 - 110)];
+    list.autoresizingMask = UIViewAutoresizingFlexibleHeight;
+    list.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+    [panel addSubview:list];
+
+    NSInteger selectedTag = 1;
+    if (self.currentDashboardID) {
+        for (NSUInteger i = 0; i < dashboards.count; i++) {
+            if ([dashboards[i][@"id"] isEqualToString:self.currentDashboardID])
+                selectedTag = 100 + i;
+        }
+    }
+
+    CGFloat y = 9;
 
     for (NSArray *item in items) {
         NSInteger tag = [item[0] integerValue];
@@ -2050,12 +2407,12 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             UIView *line = [[UIView alloc]
                 initWithFrame:CGRectMake(0, y + 4, panelWidth, 0.5f)];
             line.backgroundColor = NTBorder();
-            [panel addSubview:line];
+            [list addSubview:line];
             y += 9;
             continue;
         }
 
-        BOOL selected = tag == 1;
+        BOOL selected = tag == selectedTag;
 
         UIButton *row = [UIButton buttonWithType:UIButtonTypeCustom];
         row.frame = CGRectMake(8, y, panelWidth - 16, 46);
@@ -2081,9 +2438,11 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
         label.textColor = selected ? NTPrimary() : NTText();
         [row addSubview:label];
 
-        [panel addSubview:row];
+        [list addSubview:row];
         y += 50;
     }
+
+    list.contentSize = CGSizeMake(panelWidth, y + 8);
 
     // Piè di pagina: versione e connessione.
     NSString *version = [[NSBundle mainBundle]
@@ -2191,6 +2550,37 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
                 [self.contentScroll scrollRectToVisible:tile.frame animated:NO];
                 [self showMenuForTile:tile];
             }
+        } else if ([command isEqualToString:@"mkdash"]) {
+            // mkdash Nome|Titolo sezione|entity1,entity2
+            NSArray *parts = [argument componentsSeparatedByString:@"|"];
+            NSString *identifier = [NineCustomDashboards
+                createDashboardNamed:parts.firstObject server:self.auth.serverURL];
+            NSMutableDictionary *dash = [[NineCustomDashboards
+                dashboardWithID:identifier server:self.auth.serverURL] mutableCopy];
+            if (parts.count >= 3) {
+                dash[@"sections"] = @[@{@"title": parts[1],
+                    @"items": [parts[2] componentsSeparatedByString:@","]}];
+                [NineCustomDashboards saveDashboard:dash server:self.auth.serverURL];
+            }
+            [self showDashboard:identifier];
+        } else if ([command isEqualToString:@"showdash"]) {
+            NSArray *all = [NineCustomDashboards dashboardsForServer:self.auth.serverURL];
+            NSInteger index = argument.integerValue;
+            [self showDashboard:[argument isEqualToString:@"home"] || index >= (NSInteger)all.count
+                ? nil : all[index][@"id"]];
+        } else if ([command isEqualToString:@"edit"]) {
+            [self editCurrentDashboard];
+        } else if ([command isEqualToString:@"pick"]) {
+            id top = nav.topViewController;
+            if ([top isKindOfClass:[NineDashboardEditor class]])
+                [top debugOpenPicker];
+        } else if ([command isEqualToString:@"rmdash"]) {
+            for (NSDictionary *dash in [NineCustomDashboards
+                    dashboardsForServer:self.auth.serverURL]) {
+                if ([dash[@"name"] isEqualToString:argument])
+                    [NineCustomDashboards deleteDashboardWithID:dash[@"id"]
+                                                         server:self.auth.serverURL];
+            }
         } else if ([command isEqualToString:@"rotate"]) {
             UIInterfaceOrientation orientation =
                 [argument isEqualToString:@"p"]
@@ -2200,12 +2590,12 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
                                         forKey:@"orientation"];
             [UIViewController attemptRotationToDeviceOrientation];
         } else if ([command isEqualToString:@"dump"]) {
-            [self debugDump];
+            [self debugDump:argument];
         }
     }
 }
 
-- (void)debugDump {
+- (void)debugDump:(NSString *)argument {
     NSMutableArray *rows = [NSMutableArray array];
     for (NSString *entityID in [[self.stateByID allKeys]
             sortedArrayUsingSelector:@selector(compare:)]) {
@@ -2216,6 +2606,18 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             NEDeviceClass(entity), info[@"category"] ?: @"",
             [info[@"hidden"] boolValue] ? @"H" : @""]];
     }
+    // Attributi completi delle entità indicate (es. "dump fire|vacuum").
+    NSString *pattern = argument.length ? argument : @"$^";
+    for (NSString *entityID in self.stateByID) {
+        if ([entityID rangeOfString:pattern
+                options:NSRegularExpressionSearch | NSCaseInsensitiveSearch]
+                .location == NSNotFound) continue;
+        NSData *json = [NSJSONSerialization dataWithJSONObject:self.stateByID[entityID]
+                                                       options:0 error:nil];
+        [rows addObject:[@"#ATTR " stringByAppendingString:
+            [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] ?: @""]];
+    }
+
     NSString *caches = NSSearchPathForDirectoriesInDomains(
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     [[rows componentsJoinedByString:@"\n"]

@@ -13,6 +13,7 @@ typedef NS_ENUM(NSInteger, NineInfoKind) {
     NineInfoKindCover,
     NineInfoKindClimate,
     NineInfoKindMedia,
+    NineInfoKindVacuum,
     NineInfoKindAction,
     NineInfoKindNAS
 };
@@ -31,6 +32,11 @@ static NSSet *NineSafeCoverClasses(void) {
 @property (nonatomic, copy) NSString *area;
 @property (nonatomic, strong) NineNASAdapter *nas;
 @property (nonatomic, assign) NineInfoKind kind;
+@property (nonatomic, copy, readwrite) NSDictionary *related;
+@property (nonatomic, strong) NSDictionary *relatedStates;
+@property (nonatomic, strong) NSArray *transportButtons;
+@property (nonatomic, strong) NSArray *remoteButtons;
+@property (nonatomic, strong) UIButton *choiceButton;
 
 @property (nonatomic, strong) UIView *card;
 @property (nonatomic, strong) UIButton *closeButton;
@@ -60,10 +66,14 @@ static NSSet *NineSafeCoverClasses(void) {
 - (instancetype)initWithEntity:(NSDictionary *)entity
                       registry:(NSDictionary *)registry
                           area:(NSString *)area
-                           nas:(NineNASAdapter *)nas {
+                           nas:(NineNASAdapter *)nas
+                       related:(NSDictionary *)related
+                 relatedStates:(NSDictionary *)relatedStates {
     self = [super initWithFrame:CGRectZero];
 
     if (self) {
+        _related = [related copy] ?: @{};
+        _relatedStates = relatedStates ?: @{};
         _entity = entity;
         _entityID = [entity[@"entity_id"] copy];
         _registry = registry;
@@ -118,6 +128,9 @@ static NSSet *NineSafeCoverClasses(void) {
 
     if ([domain isEqualToString:@"media_player"])
         return NineInfoKindMedia;
+
+    if ([domain isEqualToString:@"vacuum"])
+        return NineInfoKindVacuum;
 
     if ([@[@"scene", @"script", @"button", @"input_button"]
             containsObject:domain])
@@ -250,29 +263,13 @@ static NSSet *NineSafeCoverClasses(void) {
             break;
         }
 
-        case NineInfoKindMedia: {
-            NSMutableArray *buttons = [NSMutableArray array];
-            NSArray *specs = @[
-                @[@"skip-previous", @"media_previous_track", @"Precedente"],
-                @[@"play-pause", @"media_play_pause", @"Riproduci o pausa"],
-                @[@"skip-next", @"media_next_track", @"Successivo"],
-                @[@"power", @"__power", @"Accendi o spegni"]
-            ];
-            for (NSArray *spec in specs) {
-                UIButton *button = NineRoundButton(spec[0], 60,
-                    NTHex(0x03A9F4, .2f), NTText());
-                button.accessibilityIdentifier = spec[1];
-                button.accessibilityLabel = spec[2];
-                [button addTarget:self
-                           action:@selector(mediaButton:)
-                 forControlEvents:UIControlEventTouchUpInside];
-                [self.card addSubview:button];
-                [buttons addObject:button];
-            }
-            self.roundButtons = buttons;
-            [self buildBigIcon];
+        case NineInfoKindMedia:
+            [self buildMediaControls];
             break;
-        }
+
+        case NineInfoKindVacuum:
+            [self buildVacuumControls];
+            break;
 
         case NineInfoKindAction: {
             NSString *title = [domain isEqualToString:@"scene"] ? @"Attiva"
@@ -339,7 +336,9 @@ static NSSet *NineSafeCoverClasses(void) {
     }
 
     CGFloat width = MIN((CGFloat)420, size.width - 24);
-    CGFloat height = MIN((CGFloat)560, size.height - 40);
+    CGFloat desired = self.kind == NineInfoKindMedia && self.remoteButtons.count
+        ? 640 : 560;
+    CGFloat height = MIN(desired, size.height - 40);
 
     self.card.frame = CGRectMake(floorf((size.width - width) / 2),
                                  floorf((size.height - height) / 2),
@@ -393,17 +392,13 @@ static NSSet *NineSafeCoverClasses(void) {
             break;
         }
 
-        case NineInfoKindMedia: {
-            self.bigIconCircle.frame = CGRectMake(midX - 48, top + 10, 96, 96);
-            CGFloat y = top + 180;
-            NSUInteger count = self.roundButtons.count;
-            CGFloat spacing = MIN((CGFloat)80, (width - 40) / count);
-            CGFloat start = midX - spacing * (count - 1) / 2;
-            for (NSUInteger i = 0; i < count; i++) {
-                [self.roundButtons[i] setCenter:CGPointMake(start + spacing * i, y)];
-            }
+        case NineInfoKindMedia:
+            [self layoutMediaWithTop:top width:width];
             break;
-        }
+
+        case NineInfoKindVacuum:
+            [self layoutVacuumWithTop:top width:width];
+            break;
 
         case NineInfoKindAction:
             self.bigIconCircle.frame = CGRectMake(midX - 48, top + 20, 96, 96);
@@ -544,20 +539,10 @@ static NSSet *NineSafeCoverClasses(void) {
             break;
         }
 
-        case NineInfoKindMedia: {
-            self.bigIcon.iconName = NEIconName(entity, self.registry);
-            self.bigIcon.textColor = color;
-            self.bigIconCircle.backgroundColor = [color colorWithAlphaComponent:.2f];
-            NSDictionary *attrs = NEAttributes(entity);
-            NSString *artist = [attrs[@"media_artist"] isKindOfClass:[NSString class]]
-                ? attrs[@"media_artist"] : nil;
-            if (artist.length) self.detailLabel.text = artist;
-            for (UIButton *button in self.roundButtons) {
-                button.enabled = !unavailable;
-                button.alpha = unavailable ? .4f : 1;
-            }
+        case NineInfoKindMedia:
+        case NineInfoKindVacuum:
+            [self refreshDeviceControls];
             break;
-        }
 
         case NineInfoKindNAS: {
             // Il livello è aggiornato dalla dashboard.
@@ -670,15 +655,6 @@ static NSSet *NineSafeCoverClasses(void) {
     [self call:@"set_temperature" data:@{@"temperature": @(value)}];
 }
 
-- (void)mediaButton:(UIButton *)button {
-    NSString *service = button.accessibilityIdentifier;
-    if ([service isEqualToString:@"__power"]) {
-        NSString *state = NEStateValue(self.entity);
-        service = [state isEqualToString:@"off"] ? @"turn_on" : @"turn_off";
-    }
-    [self call:service data:nil];
-}
-
 - (void)runAction {
     NSString *domain = NEDomain(self.entityID);
     NSString *service = [domain isEqualToString:@"button"] ||
@@ -693,6 +669,359 @@ static NSSet *NineSafeCoverClasses(void) {
 
 - (void)nasForce {
     [self.delegate moreInfo:self nasPowerForce:YES];
+}
+
+#pragma mark - Media e aspirapolvere
+
+// Bit di supported_features di Home Assistant.
+static NSInteger const NineMediaPause = 1, NineMediaVolumeSet = 4,
+    NineMediaVolumeMute = 8, NineMediaPrevious = 16, NineMediaNext = 32,
+    NineMediaTurnOn = 128, NineMediaTurnOff = 256, NineMediaVolumeStep = 1024,
+    NineMediaSelectSource = 2048, NineMediaPlay = 16384;
+
+static NSInteger const NineVacuumTurnOn = 1, NineVacuumPause = 4,
+    NineVacuumStop = 8, NineVacuumReturnHome = 16, NineVacuumFanSpeed = 32,
+    NineVacuumLocate = 512, NineVacuumCleanSpot = 1024, NineVacuumStart = 8192;
+
+- (NSInteger)features {
+    return [NEAttributes(self.entity)[@"supported_features"] integerValue];
+}
+
+- (UIButton *)deviceButton:(NSString *)icon
+                    action:(NSString *)action
+                     label:(NSString *)label
+                  diameter:(CGFloat)diameter
+                   caption:(BOOL)caption {
+    UIColor *tint = self.kind == NineInfoKindVacuum
+        ? NTHex(0x009688, .22f) : NTHex(0x03A9F4, .2f);
+    UIButton *button = NineRoundButton(icon, diameter, tint, NTText());
+    button.accessibilityIdentifier = action;
+    button.accessibilityLabel = label;
+    [button addTarget:self
+               action:@selector(deviceButtonTapped:)
+     forControlEvents:UIControlEventTouchUpInside];
+
+    if (caption) {
+        UILabel *text = [[UILabel alloc]
+            initWithFrame:CGRectMake(-20, diameter + 4, diameter + 40, 16)];
+        text.text = label;
+        text.font = NTFont(12);
+        text.textColor = NTSecondaryText();
+        text.textAlignment = NSTextAlignmentCenter;
+        [button addSubview:text];
+        button.clipsToBounds = NO;
+    }
+
+    [self.card addSubview:button];
+    return button;
+}
+
+- (BOOL)remoteUsesADBNames {
+    // L'integrazione Android TV (ADB) espone adb_response e usa i
+    // nomi UP/DOWN/CENTER; Android TV Remote usa DPAD_UP ecc.
+    return NEAttributes(self.entity)[@"adb_response"] != nil;
+}
+
+- (NSString *)remoteKey:(NSString *)name {
+    if ([self remoteUsesADBNames]) return name;
+    NSDictionary *map = @{@"UP": @"DPAD_UP", @"DOWN": @"DPAD_DOWN",
+                          @"LEFT": @"DPAD_LEFT", @"RIGHT": @"DPAD_RIGHT",
+                          @"CENTER": @"DPAD_CENTER"};
+    return map[name] ?: name;
+}
+
+- (void)buildMediaControls {
+    NSInteger features = [self features];
+    NSMutableArray *transport = [NSMutableArray array];
+
+    if (features & (NineMediaTurnOn | NineMediaTurnOff)) {
+        [transport addObject:[self deviceButton:@"power" action:@"svc:__power"
+            label:@"Accendi o spegni" diameter:52 caption:NO]];
+    }
+    if (features & NineMediaPrevious) {
+        [transport addObject:[self deviceButton:@"skip-previous"
+            action:@"svc:media_previous_track" label:@"Precedente"
+            diameter:52 caption:NO]];
+    }
+    if (features & (NineMediaPause | NineMediaPlay)) {
+        [transport addObject:[self deviceButton:@"play-pause"
+            action:@"svc:media_play_pause" label:@"Riproduci o pausa"
+            diameter:52 caption:NO]];
+    }
+    if (features & NineMediaNext) {
+        [transport addObject:[self deviceButton:@"skip-next"
+            action:@"svc:media_next_track" label:@"Successivo"
+            diameter:52 caption:NO]];
+    }
+    self.transportButtons = transport;
+
+    NSMutableArray *remote = [NSMutableArray array];
+
+    if (self.related[@"remote"]) {
+        // Croce direzionale: su, sinistra, OK, destra, giù.
+        NSArray *pad = @[
+            @[@"chevron-up", @"key:UP", @"Su"],
+            @[@"chevron-left", @"key:LEFT", @"Sinistra"],
+            @[@"circle-medium", @"key:CENTER", @"OK"],
+            @[@"chevron-right", @"key:RIGHT", @"Destra"],
+            @[@"chevron-down", @"key:DOWN", @"Giù"]
+        ];
+        for (NSArray *spec in pad) {
+            [remote addObject:[self deviceButton:spec[0] action:spec[1]
+                label:spec[2] diameter:56 caption:NO]];
+        }
+
+        NSArray *extra = @[
+            @[@"arrow-left", @"key:BACK", @"Indietro"],
+            @[@"home", @"key:HOME", @"Home"],
+            @[@"menu", @"key:MENU", @"Menu"],
+            @[@"volume-minus", @"key:VOLUME_DOWN", @"Volume giù"],
+            @[@"volume-plus", @"key:VOLUME_UP", @"Volume su"]
+        ];
+        for (NSArray *spec in extra) {
+            [remote addObject:[self deviceButton:spec[0] action:spec[1]
+                label:spec[2] diameter:46 caption:NO]];
+        }
+    } else if (features & (NineMediaVolumeStep | NineMediaVolumeSet)) {
+        [transport addObject:[self deviceButton:@"volume-minus"
+            action:@"svc:volume_down" label:@"Volume giù" diameter:52 caption:NO]];
+        [transport addObject:[self deviceButton:@"volume-plus"
+            action:@"svc:volume_up" label:@"Volume su" diameter:52 caption:NO]];
+        if (features & NineMediaVolumeMute) {
+            [transport addObject:[self deviceButton:@"volume-off"
+                action:@"svc:__mute" label:@"Silenzia" diameter:52 caption:NO]];
+        }
+        self.transportButtons = transport;
+    }
+    self.remoteButtons = remote;
+
+    if (features & NineMediaSelectSource) {
+        self.choiceButton = NinePillButton(@"Sorgente",
+            NTHex(0x03A9F4, .16f), NTPrimary());
+        [self.choiceButton addTarget:self action:@selector(chooseSource)
+                    forControlEvents:UIControlEventTouchUpInside];
+        [self.card addSubview:self.choiceButton];
+    }
+
+    if (!remote.count) [self buildBigIcon];
+}
+
+- (void)buildVacuumControls {
+    NSInteger features = [self features];
+    NSMutableArray *buttons = [NSMutableArray array];
+
+    if (features & (NineVacuumStart | NineVacuumTurnOn)) {
+        [buttons addObject:[self deviceButton:@"play" action:@"svc:start"
+            label:@"Avvia" diameter:60 caption:YES]];
+    }
+    if (features & NineVacuumPause) {
+        [buttons addObject:[self deviceButton:@"pause" action:@"svc:pause"
+            label:@"Pausa" diameter:60 caption:YES]];
+    }
+    if (features & NineVacuumStop) {
+        [buttons addObject:[self deviceButton:@"stop" action:@"svc:stop"
+            label:@"Ferma" diameter:60 caption:YES]];
+    }
+    if (features & NineVacuumReturnHome) {
+        [buttons addObject:[self deviceButton:@"home-import-outline"
+            action:@"svc:return_to_base" label:@"Alla base"
+            diameter:60 caption:YES]];
+    }
+    if (features & NineVacuumLocate) {
+        [buttons addObject:[self deviceButton:@"map-marker"
+            action:@"svc:locate" label:@"Trova" diameter:60 caption:YES]];
+    }
+    if (features & NineVacuumCleanSpot) {
+        [buttons addObject:[self deviceButton:@"target"
+            action:@"svc:clean_spot" label:@"Spot" diameter:60 caption:YES]];
+    }
+    self.transportButtons = buttons;
+
+    NSArray *speeds = NEAttributes(self.entity)[@"fan_speed_list"];
+    if ((features & NineVacuumFanSpeed) &&
+        [speeds isKindOfClass:[NSArray class]] && speeds.count) {
+        self.choiceButton = NinePillButton(@"Aspirazione",
+            NTHex(0x009688, .18f), NTHex(0x4DB6AC, 1));
+        [self.choiceButton addTarget:self action:@selector(chooseFanSpeed)
+                    forControlEvents:UIControlEventTouchUpInside];
+        [self.card addSubview:self.choiceButton];
+    }
+
+    [self buildBigIcon];
+}
+
+- (void)layoutRow:(NSArray *)buttons centerY:(CGFloat)y width:(CGFloat)width
+          spacing:(CGFloat)spacing {
+    NSUInteger count = buttons.count;
+    if (!count) return;
+    CGFloat step = MIN(spacing, (width - 40) / count);
+    CGFloat start = width / 2 - step * (count - 1) / 2;
+    for (NSUInteger i = 0; i < count; i++) {
+        [buttons[i] setCenter:CGPointMake(start + step * i, y)];
+    }
+}
+
+- (void)layoutMediaWithTop:(CGFloat)top width:(CGFloat)width {
+    CGFloat midX = width / 2;
+
+    if (!self.remoteButtons.count) {
+        self.bigIconCircle.frame = CGRectMake(midX - 48, top + 10, 96, 96);
+        [self layoutRow:self.transportButtons centerY:top + 160
+                  width:width spacing:72];
+        self.choiceButton.frame = CGRectMake(midX - 120, top + 214, 240, 44);
+        return;
+    }
+
+    [self layoutRow:self.transportButtons centerY:top + 30 width:width spacing:72];
+
+    // Croce direzionale centrata.
+    CGFloat padY = top + 160;
+    NSArray *pad = [self.remoteButtons subarrayWithRange:NSMakeRange(0, 5)];
+    [pad[0] setCenter:CGPointMake(midX, padY - 66)];
+    [pad[1] setCenter:CGPointMake(midX - 66, padY)];
+    [pad[2] setCenter:CGPointMake(midX, padY)];
+    [pad[3] setCenter:CGPointMake(midX + 66, padY)];
+    [pad[4] setCenter:CGPointMake(midX, padY + 66)];
+
+    NSArray *extra = [self.remoteButtons
+        subarrayWithRange:NSMakeRange(5, self.remoteButtons.count - 5)];
+    [self layoutRow:extra centerY:padY + 136 width:width spacing:66];
+
+    self.choiceButton.frame = CGRectMake(midX - 120, padY + 182, 240, 44);
+}
+
+- (void)layoutVacuumWithTop:(CGFloat)top width:(CGFloat)width {
+    CGFloat midX = width / 2;
+    self.bigIconCircle.frame = CGRectMake(midX - 48, top + 6, 96, 96);
+    [self layoutRow:self.transportButtons centerY:top + 160 width:width spacing:82];
+    self.choiceButton.frame = CGRectMake(midX - 120, top + 236, 240, 44);
+}
+
+- (void)updateRelatedStates:(NSDictionary *)relatedStates {
+    self.relatedStates = relatedStates ?: @{};
+    [self refresh];
+}
+
+- (void)refreshDeviceControls {
+    NSDictionary *entity = self.entity;
+    NSDictionary *attrs = NEAttributes(entity);
+    BOOL unavailable = NEIsUnavailable(entity);
+    UIColor *color = NEIconColor(entity);
+
+    self.bigIcon.iconName = NEIconName(entity, self.registry);
+    self.bigIcon.textColor = color;
+    self.bigIconCircle.backgroundColor = [color colorWithAlphaComponent:.2f];
+
+    NSMutableArray *details = [NSMutableArray array];
+
+    if (self.kind == NineInfoKindMedia) {
+        NSString *artist = [attrs[@"media_artist"] isKindOfClass:[NSString class]]
+            ? attrs[@"media_artist"] : nil;
+        NSString *app = [attrs[@"app_name"] isKindOfClass:[NSString class]]
+            ? attrs[@"app_name"] : nil;
+        if (artist.length) [details addObject:artist];
+        if (app.length) [details addObject:app];
+
+        NSString *source = [attrs[@"source"] isKindOfClass:[NSString class]]
+            ? attrs[@"source"] : nil;
+        [self.choiceButton setTitle:source.length
+            ? [@"Sorgente: " stringByAppendingString:source] : @"Scegli sorgente"
+                           forState:UIControlStateNormal];
+        NSArray *sources = attrs[@"source_list"];
+        BOOL hasSources = [sources isKindOfClass:[NSArray class]] && sources.count;
+        self.choiceButton.enabled = hasSources && !unavailable;
+        self.choiceButton.alpha = self.choiceButton.enabled ? 1 : .4f;
+    } else {
+        NSString *batteryID = self.related[@"battery"];
+        NSDictionary *battery = batteryID ? self.relatedStates[batteryID] : nil;
+        id level = attrs[@"battery_level"];
+        if (battery && !NEIsUnavailable(battery)) {
+            [details addObject:[@"Batteria " stringByAppendingString:
+                NEStateText(battery, nil)]];
+        } else if ([level isKindOfClass:[NSNumber class]]) {
+            [details addObject:[NSString stringWithFormat:@"Batteria %@ %%", level]];
+        }
+
+        NSString *speed = [attrs[@"fan_speed"] isKindOfClass:[NSString class]]
+            ? attrs[@"fan_speed"] : nil;
+        [self.choiceButton setTitle:speed.length
+            ? [@"Aspirazione: " stringByAppendingString:speed] : @"Aspirazione"
+                           forState:UIControlStateNormal];
+        self.choiceButton.enabled = !unavailable;
+        self.choiceButton.alpha = unavailable ? .4f : 1;
+    }
+
+    NSString *changed = NERelativeTime(entity[@"last_changed"]);
+    if (changed) [details addObject:changed];
+    self.detailLabel.text = [details componentsJoinedByString:@" · "];
+
+    NSString *remoteID = self.related[@"remote"];
+    BOOL remoteReady = remoteID && !unavailable &&
+        ![NEStateValue(entity) isEqualToString:@"off"];
+
+    for (UIButton *button in self.transportButtons) {
+        button.enabled = !unavailable;
+        button.alpha = unavailable ? .4f : 1;
+    }
+    for (UIButton *button in self.remoteButtons) {
+        button.enabled = remoteReady;
+        button.alpha = remoteReady ? 1 : .35f;
+    }
+}
+
+- (void)deviceButtonTapped:(UIButton *)button {
+    NSString *action = button.accessibilityIdentifier;
+
+    if ([action hasPrefix:@"key:"]) {
+        NSString *remoteID = self.related[@"remote"];
+        if (!remoteID) return;
+        NSString *key = [self remoteKey:[action substringFromIndex:4]];
+        [self.delegate moreInfo:self
+                    callService:@"send_command"
+                         domain:@"remote"
+                       entityID:remoteID
+                           data:@{@"command": key}];
+        return;
+    }
+
+    NSString *service = [action substringFromIndex:4];
+
+    if ([service isEqualToString:@"__power"]) {
+        service = [NEStateValue(self.entity) isEqualToString:@"off"]
+            ? @"turn_on" : @"turn_off";
+    } else if ([service isEqualToString:@"__mute"]) {
+        BOOL muted = [NEAttributes(self.entity)[@"is_volume_muted"] boolValue];
+        [self call:@"volume_mute" data:@{@"is_volume_muted": @(!muted)}];
+        return;
+    }
+
+    [self call:service data:nil];
+}
+
+- (void)chooseSource {
+    NSDictionary *attrs = NEAttributes(self.entity);
+    NSArray *sources = attrs[@"source_list"];
+    if (![sources isKindOfClass:[NSArray class]] || !sources.count) return;
+
+    __weak typeof(self) weakSelf = self;
+    [self.delegate moreInfo:self chooseFrom:sources title:@"Sorgente"
+                    current:attrs[@"source"] source:self.choiceButton
+                 completion:^(NSString *choice) {
+        [weakSelf call:@"select_source" data:@{@"source": choice}];
+    }];
+}
+
+- (void)chooseFanSpeed {
+    NSDictionary *attrs = NEAttributes(self.entity);
+    NSArray *speeds = attrs[@"fan_speed_list"];
+    if (![speeds isKindOfClass:[NSArray class]] || !speeds.count) return;
+
+    __weak typeof(self) weakSelf = self;
+    [self.delegate moreInfo:self chooseFrom:speeds title:@"Aspirazione"
+                    current:attrs[@"fan_speed"] source:self.choiceButton
+                 completion:^(NSString *choice) {
+        [weakSelf call:@"set_fan_speed" data:@{@"fan_speed": choice}];
+    }];
 }
 
 #pragma mark - Presentazione
