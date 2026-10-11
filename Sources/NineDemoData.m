@@ -75,7 +75,20 @@ static NSDictionary *NDEntity(NSString *entityID, NSString *state,
             @"friendly_name": @"Presa TV", @"device_class": @"outlet"}, 9000),
         NDEntity(@"media_player.soggiorno_tv", @"playing", @{
             @"friendly_name": @"TV Soggiorno", @"device_class": @"tv",
-            @"media_title": @"Telegiornale"}, 1200),
+            @"supported_features": @22961, @"adb_response": [NSNull null],
+            @"app_name": @"YouTube", @"source": @"YouTube",
+            @"source_list": @[@"YouTube", @"Netflix", @"Prime Video", @"RaiPlay"]},
+            1200),
+        NDEntity(@"remote.soggiorno_tv", @"on", @{
+            @"friendly_name": @"Telecomando TV"}, 1200),
+        NDEntity(@"vacuum.soggiorno_robot", @"cleaning", @{
+            @"friendly_name": @"Robot aspirapolvere",
+            @"supported_features": @12348, @"fan_speed": @"Standard",
+            @"fan_speed_list": @[@"Silenziosa", @"Standard", @"Turbo"]}, 840),
+        NDEntity(@"sensor.soggiorno_robot_batteria", @"82", @{
+            @"friendly_name": @"Robot batteria",
+            @"device_class": @"battery",
+            @"unit_of_measurement": @"%"}, 840),
         NDEntity(@"cover.soggiorno_tapparella", @"open", @{
             @"friendly_name": @"Tapparella", @"device_class": @"shutter",
             @"current_position": @60, @"supported_features": @15}, 3600),
@@ -167,8 +180,6 @@ static NSDictionary *NDEntity(NSString *entityID, NSString *state,
 
         // Senza stanza
         NDEntity(@"light.giardino", @"off", light(@"Luci giardino", 0), 60000),
-        NDEntity(@"vacuum.robot", @"docked", @{
-            @"friendly_name": @"Robot aspirapolvere"}, 10000),
         NDEntity(@"scene.serata_film", NDAgo(90000), @{
             @"friendly_name": @"Serata film"}, 90000)
     ];
@@ -206,6 +217,10 @@ static NSDictionary *NDEntity(NSString *entityID, NSString *state,
         NSString *entityID = entity[@"entity_id"];
         NSMutableDictionary *info = [NSMutableDictionary dictionary];
         if (areas[entityID]) info[@"area"] = areas[entityID];
+        if ([entityID rangeOfString:@"soggiorno_robot"].location != NSNotFound)
+            info[@"device"] = @"demo-robot";
+        if ([entityID hasSuffix:@"soggiorno_tv"])
+            info[@"device"] = @"demo-tv";
         if ([entityID hasPrefix:@"sensor."] &&
             [entityID rangeOfString:@"temperatura"].location != NSNotFound) {
             info[@"precision"] = @1;
