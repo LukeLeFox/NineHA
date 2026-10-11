@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 build 48
+
+- nuova dashboard nativa in stile app ufficiale Home Assistant: tema scuro HA,
+  badge, schede per stanza, tile card e pannello dettagli;
+- icone Material Design Icons incluse nell'app;
+- nuova schermata iniziale e accesso con nome utente e password (login flow
+  Home Assistant, con verifica in due passaggi);
+- rimossi Lovelace Rebuilder e Lovelace in WebView;
+- adattatore NAS nativo: stato letto dai sensori anche quando lo switch è
+  `unavailable`, con avvio/arresto in corso e arresto forzato;
+- corretto il ping WebSocket, che riutilizzava sempre lo stesso id e faceva
+  cadere la connessione live dopo circa un minuto;
+- valori numerici con formato italiano e precisione del registro, date
+  relative ("2 giorni fa") per i sensori timestamp;
+- aggiornamento live predefinito.
+
 ## 0.7.8 build 47
 
 - abilitate le azioni Lovelace generiche `call-service` e `perform-action`,

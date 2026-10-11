@@ -5,6 +5,7 @@
 
 #define NINEHA_NAS_SWITCH_ENTITY @"switch.example_nas"
 #define NINEHA_NAS_STATUS_ENTITY @"binary_sensor.example_nas_online"
+#define NINEHA_NAS_TITLE @"NAS"
 #define NINEHA_NAS_VM_STATUS_ENTITY @"binary_sensor.example_vm_running"
 
 #define NINEHA_SAFE_SWITCH_ENTITIES @[@"switch.example_device_one", @"switch.example_device_two"]

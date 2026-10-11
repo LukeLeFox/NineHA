@@ -11,6 +11,8 @@
 @property (nonatomic, strong) NSMutableDictionary *replies;
 @property (nonatomic, strong) NSTimer *timeoutTimer;
 @property (nonatomic, assign) BOOL finished;
+@property (nonatomic, readwrite, strong) NSDictionary *entityRegistry;
+@property (nonatomic, readwrite, strong) NSDictionary *areaIcons;
 
 @end
 
@@ -312,6 +314,9 @@ didReceiveMessage:(id)message {
 
     NSMutableDictionary *areaNames =
         [NSMutableDictionary dictionary];
+    NSMutableDictionary *areaIcons =
+        [NSMutableDictionary dictionary];
+    NSMutableArray *orderedNames = [NSMutableArray array];
 
     for (id entry in areas) {
         if (![entry isKindOfClass:[NSDictionary class]]) continue;
@@ -327,6 +332,15 @@ didReceiveMessage:(id)message {
             [name isKindOfClass:[NSString class]] &&
             name.length) {
             areaNames[identifier] = name;
+
+            if (![orderedNames containsObject:name]) {
+                [orderedNames addObject:name];
+            }
+
+            NSString *icon = entry[@"icon"];
+            if ([icon isKindOfClass:[NSString class]] && icon.length) {
+                areaIcons[name] = icon;
+            }
         }
     }
 
@@ -345,6 +359,8 @@ didReceiveMessage:(id)message {
     }
 
     NSMutableDictionary *map =
+        [NSMutableDictionary dictionary];
+    NSMutableDictionary *registry =
         [NSMutableDictionary dictionary];
 
     for (id entry in entities) {
@@ -391,19 +407,37 @@ didReceiveMessage:(id)message {
         if (name.length) {
             map[entityID] = name;
         }
+
+        // Metadati usati dalla dashboard nativa.
+        NSMutableDictionary *info = [NSMutableDictionary dictionary];
+
+        if (name.length) info[@"area"] = name;
+
+        id label = entry[@"en"];
+        if ([label isKindOfClass:[NSString class]] && [label length])
+            info[@"name"] = label;
+
+        id icon = entry[@"ic"];
+        if ([icon isKindOfClass:[NSString class]] && [icon length])
+            info[@"icon"] = icon;
+
+        if ([entry[@"hb"] boolValue]) info[@"hidden"] = @YES;
+
+        id category = entry[@"ec"];
+        if ([category isKindOfClass:[NSNumber class]])
+            info[@"category"] = category;
+
+        id precision = entry[@"dp"];
+        if ([precision isKindOfClass:[NSNumber class]])
+            info[@"precision"] = precision;
+
+        registry[entityID] = info;
     }
 
-    if (!areaNames.count) {
-        [self fail:@"nessuna stanza disponibile"];
-        return;
-    }
+    self.entityRegistry = registry;
+    self.areaIcons = areaIcons;
 
-    NSArray *sorted = [[NSSet setWithArray:
-        [areaNames allValues]].allObjects
-            sortedArrayUsingSelector:
-                @selector(localizedCaseInsensitiveCompare:)];
-
-    [self finishWithMap:map names:sorted error:nil];
+    [self finishWithMap:map names:orderedNames error:nil];
 }
 
 - (void)webSocket:(SRWebSocket *)socket

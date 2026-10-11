@@ -7,7 +7,7 @@ typedef void (^NineLiveStateHandler)(
 
 typedef void (^NineLiveStatusHandler)(BOOL connected);
 
-@interface NineLovelaceLive : NSObject
+@interface NineLiveSocket : NSObject
 
 - (instancetype)initWithServerURL:(NSString *)serverURL
                             token:(NSString *)token

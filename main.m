@@ -1,17 +1,22 @@
 #import <UIKit/UIKit.h>
 #import "Sources/NineAuth.h"
-#import "Sources/NineDashboard.h"
-#import "Sources/NineTilesController.h"
-#import "Sources/NineLovelaceController.h"
-#import "Sources/NineUnstableSettingsController.h"
+#import "Sources/NineHomeDashboard.h"
+#import "Sources/NineIcons.h"
+#import "Sources/NineTheme.h"
 
-@interface NineHomeController : UIViewController
+@interface NineSetupController : UIViewController
 
 @property (nonatomic, strong) NineAuth *auth;
 @property (nonatomic, strong) UITextField *serverField;
 @property (nonatomic, strong) UITextField *clientField;
+@property (nonatomic, strong) UITextField *userField;
+@property (nonatomic, strong) UITextField *passwordField;
+@property (nonatomic, strong) UIButton *loginButton;
 @property (nonatomic, strong) UITextView *output;
 @property (nonatomic, copy) NSString *mode;
+@property (nonatomic, strong) UIScrollView *scroll;
+@property (nonatomic, strong) UIView *column;
+@property (nonatomic, strong) UIView *card;
 
 - (void)receiveOAuth:(NSURL *)url;
 - (UIViewController *)initialDashboardIfAvailable;
@@ -22,7 +27,7 @@
 
 @end
 
-@implementation NineHomeController
+@implementation NineSetupController
 
 - (void)showStatus:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -31,16 +36,39 @@
 }
 
 - (UITextField *)addField:(NSString *)placeholder
-                       y:(CGFloat)y
-                  parent:(UIView *)parent {
+                    label:(NSString *)title
+                        y:(CGFloat)y
+                   parent:(UIView *)parent {
+
+    CGFloat width = parent.bounds.size.width - 40;
+
+    UILabel *label = [[UILabel alloc]
+        initWithFrame:CGRectMake(20, y, width, 18)];
+    label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    label.text = title;
+    label.font = NTMediumFont(12);
+    label.textColor = NTSecondaryText();
+    [parent addSubview:label];
 
     UITextField *field = [[UITextField alloc]
-        initWithFrame:CGRectMake(15, y,
-                                 parent.bounds.size.width - 30, 38)];
+        initWithFrame:CGRectMake(20, y + 22, width, 44)];
 
     field.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    field.borderStyle = UITextBorderStyleRoundedRect;
-    field.placeholder = placeholder;
+    field.borderStyle = UITextBorderStyleNone;
+    field.backgroundColor = NTHex(0xFFFFFF, .06f);
+    field.layer.cornerRadius = 8;
+    field.layer.borderWidth = 1.0f / [UIScreen mainScreen].scale;
+    field.layer.borderColor = NTBorder().CGColor;
+    field.textColor = NTText();
+    field.font = NTFont(16);
+    field.tintColor = NTPrimary();
+    field.keyboardAppearance = UIKeyboardAppearanceDark;
+    field.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 44)];
+    field.leftViewMode = UITextFieldViewModeAlways;
+    field.clearButtonMode = UITextFieldViewModeWhileEditing;
+    field.attributedPlaceholder = [[NSAttributedString alloc]
+        initWithString:placeholder
+            attributes:@{NSForegroundColorAttributeName: NTDisabledText()}];
     field.autocapitalizationType = UITextAutocapitalizationTypeNone;
     field.autocorrectionType = UITextAutocorrectionTypeNo;
     field.keyboardType = UIKeyboardTypeURL;
@@ -49,118 +77,232 @@
     return field;
 }
 
-- (void)addButton:(NSString *)title
-                y:(CGFloat)y
-           parent:(UIView *)parent
-           action:(SEL)action {
+- (UIButton *)addButton:(NSString *)title
+                   icon:(NSString *)icon
+                  style:(NSInteger)style
+                  frame:(CGRect)frame
+                 parent:(UIView *)parent
+                 action:(SEL)action {
 
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    // style 0 = primario pieno, 1 = tonale, 2 = solo testo
+    UIColor *background = style == 0 ? NTPrimary()
+        : (style == 1 ? [NTPrimary() colorWithAlphaComponent:.14f]
+                      : [UIColor clearColor]);
+    UIColor *foreground = style == 0 ? [UIColor whiteColor] : NTPrimary();
 
-    button.frame = CGRectMake(15, y,
-                              parent.bounds.size.width - 30, 44);
-
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+    button.frame = frame;
     button.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    button.backgroundColor =
-        [UIColor colorWithRed:0.08 green:0.48 blue:0.75 alpha:1];
+    button.backgroundColor = background;
+    button.layer.cornerRadius = 10;
 
-    [button setTitle:title forState:UIControlStateNormal];
-    [button setTitleColor:[UIColor whiteColor]
-                 forState:UIControlStateNormal];
+    NSMutableAttributedString *text = [[NSMutableAttributedString alloc] init];
+    NSString *glyph = NineIconGlyph(icon);
+
+    if (glyph) {
+        [text appendAttributedString:[[NSAttributedString alloc]
+            initWithString:[glyph stringByAppendingString:@"  "]
+                attributes:@{NSFontAttributeName: NineIconFont(18),
+                             NSForegroundColorAttributeName: foreground,
+                             NSBaselineOffsetAttributeName: @(-2)}]];
+    }
+
+    [text appendAttributedString:[[NSAttributedString alloc]
+        initWithString:title
+            attributes:@{NSFontAttributeName: NTMediumFont(15),
+                         NSForegroundColorAttributeName: foreground}]];
+
+    [button setAttributedTitle:text forState:UIControlStateNormal];
+
+    NSMutableAttributedString *pressed = [text mutableCopy];
+    [pressed addAttribute:NSForegroundColorAttributeName
+                    value:[foreground colorWithAlphaComponent:.5f]
+                    range:NSMakeRange(0, pressed.length)];
+    [button setAttributedTitle:pressed forState:UIControlStateHighlighted];
 
     [button addTarget:self
                action:action
      forControlEvents:UIControlEventTouchUpInside];
 
     [parent addSubview:button];
+    return button;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    NSString *version = [[NSBundle mainBundle]
-        objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    self.title = [NSString stringWithFormat:
-        @"NineHA %@", version ?: @""];
-    self.view.backgroundColor = [UIColor whiteColor];
+    self.title = @"NineHA";
+    self.view.backgroundColor = NTBackground();
     self.auth = [[NineAuth alloc] init];
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     self.mode = [defaults stringForKey:@"NineHA.Mode"] ?: @"manual";
 
-    UIScrollView *scroll = [[UIScrollView alloc]
-        initWithFrame:self.view.bounds];
-
-    scroll.autoresizingMask =
+    self.scroll = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    self.scroll.autoresizingMask =
         UIViewAutoresizingFlexibleWidth |
         UIViewAutoresizingFlexibleHeight;
+    self.scroll.alwaysBounceVertical = YES;
+    self.scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
+    self.scroll.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+    [self.view addSubview:self.scroll];
 
-    scroll.contentSize = CGSizeMake(self.view.bounds.size.width, 720);
-    [self.view addSubview:scroll];
+    CGFloat width = 440;
+    self.column = [[UIView alloc]
+        initWithFrame:CGRectMake(0, 0, width, 760)];
+    [self.scroll addSubview:self.column];
 
-    UIView *content = [[UIView alloc]
-        initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 720)];
-
-    content.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    [scroll addSubview:content];
+    UIImageView *logo = [[UIImageView alloc]
+        initWithFrame:CGRectMake((width - 84) / 2, 36, 84, 84)];
+    logo.image = [UIImage imageNamed:@"Icon-76"]
+        ?: [UIImage imageNamed:@"Icon-60"];
+    logo.layer.cornerRadius = 19;
+    logo.clipsToBounds = YES;
+    logo.autoresizingMask =
+        UIViewAutoresizingFlexibleLeftMargin |
+        UIViewAutoresizingFlexibleRightMargin;
+    [self.column addSubview:logo];
 
     UILabel *heading = [[UILabel alloc]
-        initWithFrame:CGRectMake(15, 10,
-                                 content.bounds.size.width - 30, 46)];
-
+        initWithFrame:CGRectMake(0, 132, width, 36)];
     heading.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    heading.text = @"Home Assistant - iOS 9";
-    heading.font = [UIFont boldSystemFontOfSize:21];
-    [content addSubview:heading];
+    heading.text = @"NineHA";
+    heading.textAlignment = NSTextAlignmentCenter;
+    heading.font = NTMediumFont(30);
+    heading.textColor = NTText();
+    [self.column addSubview:heading];
+
+    NSString *version = [[NSBundle mainBundle]
+        objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+
+    UILabel *subtitle = [[UILabel alloc]
+        initWithFrame:CGRectMake(0, 168, width, 22)];
+    subtitle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    subtitle.text = [NSString stringWithFormat:
+        @"Client Home Assistant per iOS 9 · %@", version ?: @""];
+    subtitle.textAlignment = NSTextAlignmentCenter;
+    subtitle.font = NTFont(14);
+    subtitle.textColor = NTSecondaryText();
+    [self.column addSubview:subtitle];
+
+    self.card = [[UIView alloc]
+        initWithFrame:CGRectMake(0, 212, width, 424)];
+    self.card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.card.backgroundColor = NTCard();
+    self.card.layer.cornerRadius = 16;
+    self.card.layer.borderWidth = 1.0f / [UIScreen mainScreen].scale;
+    self.card.layer.borderColor = NTBorder().CGColor;
+    [self.column addSubview:self.card];
 
     self.serverField =
-        [self addField:@"https://home.example.com"
-                    y:70 parent:content];
+        [self addField:@"http://homeassistant.local:8123"
+                 label:@"INDIRIZZO DEL SERVER"
+                     y:20 parent:self.card];
 
     self.serverField.text =
         [defaults stringForKey:@"NineHA.Server"];
 
-    self.clientField =
-        [self addField:@"Client ID OAuth HTTPS (opzionale)"
-                    y:120 parent:content];
-
+    // Il Client ID serve solo per OAuth: viene chiesto al momento.
+    self.clientField = [[UITextField alloc] init];
     self.clientField.text =
         [defaults stringForKey:@"NineHA.ClientID"];
 
-    [self addButton:@"Salva token manuale"
-                  y:185 parent:content
-             action:@selector(saveManual)];
+    self.userField =
+        [self addField:@"Nome utente"
+                 label:@"NOME UTENTE"
+                     y:94 parent:self.card];
+    self.userField.keyboardType = UIKeyboardTypeDefault;
+    self.userField.text = [defaults stringForKey:@"NineHA.Username"];
 
-    [self addButton:@"Usa token salvato"
-                  y:239 parent:content
-             action:@selector(useManual)];
+    self.passwordField =
+        [self addField:@"Password"
+                 label:@"PASSWORD"
+                     y:168 parent:self.card];
+    self.passwordField.keyboardType = UIKeyboardTypeDefault;
+    self.passwordField.secureTextEntry = YES;
+    self.passwordField.returnKeyType = UIReturnKeyGo;
+    [self.passwordField addTarget:self
+                           action:@selector(loginWithPassword)
+                 forControlEvents:UIControlEventEditingDidEndOnExit];
 
-    [self addButton:@"Accedi con OAuth"
-                  y:293 parent:content
-             action:@selector(startOAuth)];
+    CGFloat inner = width - 40;
 
-    [self addButton:@"Verifica API e leggi entità"
-                  y:347 parent:content
-             action:@selector(readStates)];
+    self.loginButton =
+        [self addButton:@"Accedi" icon:@"login"
+                  style:0 frame:CGRectMake(20, 254, inner, 48)
+                 parent:self.card action:@selector(loginWithPassword)];
 
-    [self addButton:@"Apri dashboard"
-                  y:401 parent:content
-             action:@selector(openDashboard)];
+    CGFloat half = (inner - 10) / 2;
+
+    UIButton *token =
+        [self addButton:@"Token" icon:@"key-variant"
+                  style:1 frame:CGRectMake(20, 312, half, 44)
+                 parent:self.card action:@selector(saveManual)];
+    token.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                             UIViewAutoresizingFlexibleRightMargin;
+
+    UIButton *oauth =
+        [self addButton:@"OAuth" icon:@"shield-account"
+                  style:1 frame:CGRectMake(30 + half, 312, half, 44)
+                 parent:self.card action:@selector(askOAuthClient)];
+    oauth.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                             UIViewAutoresizingFlexibleLeftMargin;
+
+    UIButton *open =
+        [self addButton:@"Apri la dashboard" icon:nil
+                  style:2 frame:CGRectMake(20, 366, half, 40)
+                 parent:self.card action:@selector(openDashboard)];
+    open.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                            UIViewAutoresizingFlexibleRightMargin;
+
+    UIButton *check =
+        [self addButton:@"Verifica connessione" icon:nil
+                  style:2 frame:CGRectMake(30 + half, 366, half, 40)
+                 parent:self.card action:@selector(readStates)];
+    check.autoresizingMask = UIViewAutoresizingFlexibleWidth |
+                             UIViewAutoresizingFlexibleLeftMargin;
 
     self.output = [[UITextView alloc]
-        initWithFrame:CGRectMake(15, 460,
-                                 content.bounds.size.width - 30, 240)];
-
+        initWithFrame:CGRectMake(0, 650, width, 110)];
     self.output.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.output.editable = NO;
-    self.output.font = [UIFont systemFontOfSize:14];
-    self.output.backgroundColor =
-        [UIColor colorWithWhite:0.94 alpha:1];
+    self.output.font = NTFont(13);
+    self.output.textColor = NTSecondaryText();
+    self.output.backgroundColor = [UIColor clearColor];
+    self.output.textAlignment = NSTextAlignmentCenter;
+    self.output.scrollEnabled = NO;
 
     self.output.text =
-        @"Configura il server Home Assistant.\n"
-         "Scegli token manuale oppure OAuth.";
+        @"Accedi con il tuo utente Home Assistant, oppure usa un "
+         "token di accesso a lunga durata (Profilo > Sicurezza). "
+         "La password non viene salvata sul dispositivo.";
 
-    [content addSubview:self.output];
+    [self.column addSubview:self.output];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self.navigationController setNavigationBarHidden:NO animated:animated];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
+    CGSize size = self.view.bounds.size;
+    CGFloat width = MIN((CGFloat)440, size.width - 32);
+    CGFloat height = 770;
+
+    // Colonna centrata, anche verticalmente quando c'è spazio.
+    CGFloat top = MAX((CGFloat)0, floorf((size.height - height) / 2));
+
+    self.column.frame = CGRectMake(floorf((size.width - width) / 2),
+                                   top, width, height);
+    self.scroll.contentSize = CGSizeMake(size.width, top + height);
 }
 
 - (BOOL)prepareConnection {
@@ -212,6 +354,108 @@
 
     [[NSUserDefaults standardUserDefaults]
         setObject:mode forKey:@"NineHA.Mode"];
+}
+
+- (void)loginWithPassword {
+    if (![self prepareConnection]) return;
+
+    NSString *username = [self.userField.text stringByTrimmingCharactersInSet:
+        [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *password = self.passwordField.text ?: @"";
+
+    if (!username.length || !password.length) {
+        [self showStatus:@"Inserisci nome utente e password."];
+        return;
+    }
+
+    [[NSUserDefaults standardUserDefaults]
+        setObject:username forKey:@"NineHA.Username"];
+
+    self.loginButton.enabled = NO;
+    self.loginButton.alpha = .5f;
+    [self showStatus:@"Accesso in corso..."];
+
+    __weak typeof(self) weakSelf = self;
+
+    [self.auth loginWithUsername:username
+                        password:password
+                      mfaHandler:^(NineAuthMFAResponder respond) {
+        [weakSelf askMFACode:respond];
+    } completion:^(NSString *token, NSError *error) {
+        NineSetupController *owner = weakSelf;
+        if (!owner) return;
+
+        owner.loginButton.enabled = YES;
+        owner.loginButton.alpha = 1;
+        owner.passwordField.text = @"";
+
+        if (error || !token.length) {
+            [owner showStatus:error.localizedDescription
+                ?: @"Accesso non riuscito."];
+            return;
+        }
+
+        [owner selectAuthMode:@"password"];
+        [owner rememberCurrentServer];
+        [owner showStatus:@"Accesso eseguito."];
+        [owner.navigationController
+            pushViewController:[owner ninehaConfiguredDashboard]
+                      animated:YES];
+    }];
+}
+
+- (void)askMFACode:(NineAuthMFAResponder)respond {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Verifica in due passaggi"
+                         message:@"Inserisci il codice dell'app di autenticazione."
+                  preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.placeholder = @"Codice";
+        field.keyboardType = UIKeyboardTypeNumberPad;
+    }];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                              style:UIAlertActionStyleCancel
+                                            handler:^(UIAlertAction *a) {
+        respond(nil);
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Verifica"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction *a) {
+        respond(alert.textFields.firstObject.text ?: @"");
+    }]];
+
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)askOAuthClient {
+    UIAlertController *alert = [UIAlertController
+        alertControllerWithTitle:@"Accesso OAuth"
+                         message:@"Client ID HTTPS registrato per NineHA."
+                  preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
+        field.placeholder = @"https://client.example.com";
+        field.text = self.clientField.text;
+        field.keyboardType = UIKeyboardTypeURL;
+        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
+        field.autocorrectionType = UITextAutocorrectionTypeNo;
+    }];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"Continua"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction *a) {
+        self.clientField.text = alert.textFields.firstObject.text;
+        [self startOAuth];
+    }]];
+
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)saveManual {
@@ -312,7 +556,8 @@
     // Mai memorizzare token in NSUserDefaults.
     // Registriamo solo istanze con credenziali nel Keychain.
     if (![self.auth hasManualToken] &&
-        ![self.auth hasOAuthSession]) {
+        ![self.auth hasOAuthSession] &&
+        ![self.auth hasPasswordSession]) {
         return;
     }
 
@@ -377,7 +622,7 @@
     self.auth = [[NineAuth alloc] init];
 
     [self selectAuthMode:
-        [mode isEqualToString:@"oauth"] ? @"oauth" : @"manual"];
+        [@[@"oauth", @"password"] containsObject:mode] ? mode : @"manual"];
 
     [self prepareConnection];
 }
@@ -437,29 +682,13 @@
     [self selectAuthMode:@"manual"];
 
     [self showStatus:
-        @"Nuovo server.\n"
-         "Inserisci l'indirizzo e salva un token.\n"
+        @"Nuovo server: inserisci l'indirizzo e salva un token. "
          "Gli altri server resteranno memorizzati."];
 }
 
 
 - (UIViewController *)ninehaConfiguredDashboard {
-
-    NSString *choice =
-        [NineUnstableSettingsController
-            startupModeForServerURL:self.auth.serverURL];
-
-    if ([choice isEqualToString:@"native"]) {
-        return [[NineTilesController alloc]
-            initWithAuth:self.auth mode:self.mode];
-    }
-
-    if ([choice isEqualToString:@"original"]) {
-        return [[NineLegacyWebController alloc]
-            initWithAuth:self.auth mode:self.mode];
-    }
-
-    return [[NineLovelaceController alloc]
+    return [[NineHomeDashboard alloc]
         initWithAuth:self.auth mode:self.mode];
 }
 
@@ -468,19 +697,18 @@
 
     if (![self prepareConnection]) return nil;
 
-    BOOL manual = [self.auth hasManualToken];
-    BOOL oauth = [self.auth hasOAuthSession];
-
-    if (!manual && !oauth) return nil;
-
-    // Se la modalità scelta non è disponibile,
-    // selezioniamo quella che possiede credenziali.
-    if ([self.mode isEqualToString:@"oauth"]) {
-        if (!oauth && manual) {
-            [self selectAuthMode:@"manual"];
+    // Se la modalità scelta non ha credenziali,
+    // selezioniamo la prima che le possiede.
+    if (![self.auth hasCredentialsForMode:self.mode]) {
+        NSString *available = nil;
+        for (NSString *mode in @[@"password", @"manual", @"oauth"]) {
+            if ([self.auth hasCredentialsForMode:mode]) {
+                available = mode;
+                break;
+            }
         }
-    } else if (!manual && oauth) {
-        [self selectAuthMode:@"oauth"];
+        if (!available) return nil;
+        [self selectAuthMode:available];
     }
 
     [self rememberCurrentServer];
@@ -491,14 +719,11 @@
 - (void)openDashboard {
     if (![self prepareConnection]) return;
 
-    BOOL oauth = [self.mode isEqualToString:@"oauth"];
-    BOOL hasCredentials = oauth
-        ? [self.auth hasOAuthSession]
-        : [self.auth hasManualToken];
+    BOOL hasCredentials = [self.auth hasCredentialsForMode:self.mode];
 
     if (!hasCredentials) {
         [self showStatus:
-            @"Configura prima una modalità di autenticazione."];
+            @"Salva prima un token oppure accedi con OAuth."];
         return;
     }
 
@@ -577,61 +802,25 @@
 
             NSArray *states = (NSArray *)json;
 
-            NSMutableString *result =
-                [NSMutableString stringWithFormat:
-                    @"CONNESSIONE RIUSCITA\n"
-                     "Modalità: %@\n"
-                     "Entità: %lu\n\n",
-                    self.mode,
-                    (unsigned long)states.count];
-
-            NSUInteger limit = MIN((NSUInteger)8, states.count);
-
-            for (NSUInteger i = 0; i < limit; i++) {
-                NSDictionary *entity = states[i];
-
-                if (![entity isKindOfClass:[NSDictionary class]]) {
-                    continue;
-                }
-
-                NSDictionary *attributes = entity[@"attributes"];
-
-                NSString *name = nil;
-                if ([attributes isKindOfClass:[NSDictionary class]]) {
-                    id friendly = attributes[@"friendly_name"];
-                    if ([friendly isKindOfClass:[NSString class]]) {
-                        name = friendly;
-                    }
-                }
-
-                if (!name.length) {
-                    name = entity[@"entity_id"];
-                }
-
-                id value = entity[@"state"];
-
-                [result appendFormat:@"%@: %@\n",
-                    name ?: @"Entità",
-                    value ?: @"N/D"];
-            }
-
-            [self showStatus:result];
+            [self showStatus:[NSString stringWithFormat:
+                @"Connessione riuscita (%@).\n"
+                 "%lu entità disponibili. Tocca \"Apri la dashboard\".",
+                [self.mode isEqualToString:@"oauth"] ? @"OAuth"
+                    : ([self.mode isEqualToString:@"password"]
+                        ? @"utente e password" : @"token"),
+                (unsigned long)states.count]];
 
         }] resume];
     };
 
-    if ([self.mode isEqualToString:@"oauth"]) {
-        [self.auth useOAuthToken:completion];
-    } else {
-        [self.auth useManualToken:completion];
-    }
+    [self.auth useTokenForMode:self.mode completion:completion];
 }
 
 @end
 
 @interface NineHAAppDelegate : UIResponder <UIApplicationDelegate>
 @property (nonatomic, strong) UIWindow *window;
-@property (nonatomic, strong) NineHomeController *home;
+@property (nonatomic, strong) NineSetupController *home;
 @end
 
 @implementation NineHAAppDelegate
@@ -685,8 +874,12 @@ didFinishLaunchingWithOptions:(NSDictionary *)options {
 
     self.window = [[UIWindow alloc]
         initWithFrame:[UIScreen mainScreen].bounds];
+    self.window.backgroundColor = NTBackground();
+    self.window.tintColor = NTPrimary();
 
-    self.home = [[NineHomeController alloc] init];
+    NTApplyAppearance();
+
+    self.home = [[NineSetupController alloc] init];
 
     [[NSNotificationCenter defaultCenter]
         addObserver:self

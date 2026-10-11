@@ -22,6 +22,27 @@ typedef void (^NineAuthCompletion)(
 - (void)useManualToken:(NineAuthCompletion)completion;
 - (void)useOAuthToken:(NineAuthCompletion)completion;
 
+/*
+ * Accesso con nome utente e password tramite il login flow
+ * documentato di Home Assistant (/auth/login_flow, /auth/token).
+ * La password non viene memorizzata: nel Keychain resta solo il
+ * refresh token. Se l'account usa l'autenticazione a due fattori,
+ * mfaHandler riceve un blocco da chiamare con il codice (nil annulla).
+ */
+typedef void (^NineAuthMFAResponder)(NSString *code);
+
+- (BOOL)hasPasswordSession;
+- (void)loginWithUsername:(NSString *)username
+                 password:(NSString *)password
+               mfaHandler:(void (^)(NineAuthMFAResponder respond))mfaHandler
+               completion:(NineAuthCompletion)completion;
+- (void)usePasswordToken:(NineAuthCompletion)completion;
+
+// Modalità: "manual", "oauth" oppure "password".
+- (BOOL)hasCredentialsForMode:(NSString *)mode;
+- (void)useTokenForMode:(NSString *)mode
+             completion:(NineAuthCompletion)completion;
+
 @end
 
 

@@ -1,7 +1,7 @@
-#import "NineLovelaceLive.h"
+#import "NineLiveSocket.h"
 #import "SRWebSocket.h"
 
-@interface NineLovelaceLive () <SRWebSocketDelegate>
+@interface NineLiveSocket () <SRWebSocketDelegate>
 
 @property (nonatomic, copy) NSString *serverURL;
 @property (nonatomic, copy) NSString *token;
@@ -15,10 +15,12 @@
 @property (nonatomic, assign) BOOL stopped;
 @property (nonatomic, assign) BOOL subscribed;
 @property (nonatomic, assign) BOOL waitingForPong;
+@property (nonatomic, assign) NSInteger nextMessageID;
+@property (nonatomic, assign) NSInteger pendingPingID;
 
 @end
 
-@implementation NineLovelaceLive
+@implementation NineLiveSocket
 
 - (instancetype)initWithServerURL:(NSString *)serverURL
                             token:(NSString *)token
@@ -175,8 +177,13 @@
 
     self.waitingForPong = YES;
 
+    // Home Assistant rifiuta id non crescenti: ogni ping
+    // deve usare un identificativo nuovo.
+    self.pendingPingID = MAX(self.nextMessageID, 2);
+    self.nextMessageID = self.pendingPingID + 1;
+
     [self sendJSON:@{
-        @"id": @2,
+        @"id": @(self.pendingPingID),
         @"type": @"ping"
     }];
 }
@@ -261,7 +268,7 @@ didReceiveMessage:(id)message {
     }
 
     else if ([type isEqualToString:@"pong"] &&
-             [reply[@"id"] integerValue] == 2) {
+             [reply[@"id"] integerValue] == self.pendingPingID) {
         self.waitingForPong = NO;
     }
 

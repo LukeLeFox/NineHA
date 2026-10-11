@@ -1,4 +1,7 @@
 #import "NineDashboard.h"
+#import "NineEntity.h"
+#import "NineIcons.h"
+#import "NineTheme.h"
 
 @interface NineDashboard () <UISearchBarDelegate, NSURLSessionTaskDelegate>
 
@@ -63,53 +66,41 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    NSString *version = [[NSBundle mainBundle]
-        objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-
-    self.title = [NSString stringWithFormat:
-                  @"NineHA %@", version ?: @""];
-
-    self.navigationItem.leftBarButtonItem =
-        [[UIBarButtonItem alloc]
-         initWithTitle:@"Dashboard"
-                 style:UIBarButtonItemStylePlain
-                target:self
-                action:@selector(goBack)];
+    self.title = @"Entità";
 
     self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc]
-         initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
-                            target:self
-                            action:@selector(fetchStates)];
+        NineIconBarItem(@"refresh", self, @selector(fetchStates));
 
-    self.tableView.backgroundColor = [UIColor blackColor];
-    self.tableView.separatorColor =
-        [UIColor colorWithWhite:0.17 alpha:1];
-    self.tableView.rowHeight = 65;
+    NTStyleTableView(self.tableView);
+    self.tableView.rowHeight = 60;
+    self.tableView.separatorInset = UIEdgeInsetsMake(0, 60, 0, 0);
     self.tableView.tableFooterView = [[UIView alloc] init];
+    self.tableView.keyboardDismissMode =
+        UIScrollViewKeyboardDismissModeOnDrag;
 
     CGFloat width = self.view.bounds.size.width;
 
     UIView *header = [[UIView alloc]
-        initWithFrame:CGRectMake(0, 0, width, 94)];
-    header.backgroundColor = [UIColor blackColor];
+        initWithFrame:CGRectMake(0, 0, width, 100)];
+    header.backgroundColor = NTBackground();
 
     self.search = [[UISearchBar alloc]
-        initWithFrame:CGRectMake(0, 0, width, 48)];
+        initWithFrame:CGRectMake(4, 4, width - 8, 48)];
     self.search.delegate = self;
-    self.search.placeholder = @"Cerca nome o entity_id";
+    self.search.placeholder = @"Cerca entità";
     self.search.searchBarStyle = UISearchBarStyleMinimal;
     self.search.barStyle = UIBarStyleBlack;
+    self.search.keyboardAppearance = UIKeyboardAppearanceDark;
+    self.search.tintColor = NTPrimary();
     self.search.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     [header addSubview:self.search];
 
     self.filter = [[UISegmentedControl alloc]
-        initWithItems:@[@"Home", @"Tutte", @"Comandi", @"Nascoste"]];
-    self.filter.frame = CGRectMake(8, 52, width - 16, 34);
+        initWithItems:@[@"Tutte", @"Comandi", @"Preferiti", @"Nascoste"]];
+    self.filter.frame = CGRectMake(12, 56, width - 24, 32);
     self.filter.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.filter.selectedSegmentIndex = 0;
-    self.filter.tintColor =
-        [UIColor colorWithRed:0.12 green:0.61 blue:0.87 alpha:1];
+    self.filter.tintColor = NTPrimary();
     [self.filter addTarget:self
                     action:@selector(applyFilter)
           forControlEvents:UIControlEventValueChanged];
@@ -118,6 +109,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     self.tableView.tableHeaderView = header;
 
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+    refresh.tintColor = NTSecondaryText();
     [refresh addTarget:self
                 action:@selector(fetchStates)
       forControlEvents:UIControlEventValueChanged];
@@ -129,13 +121,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-
-    self.navigationController.navigationBar.barStyle =
-        UIBarStyleBlack;
-    self.navigationController.navigationBar.barTintColor =
-        [UIColor blackColor];
-    self.navigationController.navigationBar.tintColor =
-        [UIColor whiteColor];
+    NTStyleNavigationBar(self.navigationController.navigationBar);
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -158,23 +144,10 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
     [self.session invalidateAndCancel];
     self.session = nil;
-
-    self.navigationController.navigationBar.barStyle =
-        UIBarStyleDefault;
-    self.navigationController.navigationBar.barTintColor = nil;
-    self.navigationController.navigationBar.tintColor = nil;
-}
-
-- (void)goBack {
-    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)withToken:(NineAuthCompletion)completion {
-    if ([self.mode isEqualToString:@"oauth"]) {
-        [self.auth useOAuthToken:completion];
-    } else {
-        [self.auth useManualToken:completion];
-    }
+    [self.auth useTokenForMode:self.mode completion:completion];
 }
 
 - (void)finishFetch:(NSArray *)states
@@ -194,6 +167,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             [self applyFilter];
         }
 
+        // Solo gli errori occupano la barra.
         self.navigationItem.prompt = message;
     });
 }
@@ -202,7 +176,6 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     if (self.loading) return;
 
     self.loading = YES;
-    self.navigationItem.prompt = @"Aggiornamento entità...";
 
     [self createSession];
 
@@ -258,14 +231,12 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
             NSArray *states = (NSArray *)json;
 
-            [self finishFetch:states message:
-                [NSString stringWithFormat:
-                    @"%lu entità · aggiornate",
-                    (unsigned long)states.count]];
+            [self finishFetch:states message:nil];
 
         }] resume];
     }];
 }
+
 
 - (NSString *)displayName:(NSDictionary *)entity {
     NSDictionary *attributes = entity[@"attributes"];
@@ -302,10 +273,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
         if (![entityID isKindOfClass:[NSString class]]) continue;
 
-        BOOL command =
-            [entityID hasPrefix:@"light."] ||
-            [entityID hasPrefix:@"switch."] ||
-            [entityID hasPrefix:@"input_boolean."];
+        BOOL command = NEIsToggleable(entity);
 
         BOOL hidden = [self.hiddenEntities containsObject:entityID];
 
@@ -315,17 +283,9 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             continue;
         }
 
-        // Home: preferiti, oppure comandi finche' non ne esistono.
-        if (filter == 0) {
-            if (self.favorites.count > 0) {
-                if (![self.favorites containsObject:entityID])
-                    continue;
-            } else if (!command) {
-                continue;
-            }
-        }
-
-        if (filter == 2 && !command) continue;
+        if (filter == 1 && !command) continue;
+        if (filter == 2 && ![self.favorites containsObject:entityID])
+            continue;
 
         if (query.length &&
             [[self displayName:entity].lowercaseString
@@ -360,6 +320,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
          cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 
     static NSString *reuseID = @"NineEntityCell";
+    static NSInteger const iconTag = 9001;
 
     UITableViewCell *cell =
         [tableView dequeueReusableCellWithIdentifier:reuseID];
@@ -368,37 +329,47 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
         cell = [[UITableViewCell alloc]
             initWithStyle:UITableViewCellStyleSubtitle
           reuseIdentifier:reuseID];
+        NTStyleCell(cell);
+        cell.backgroundColor = NTBackground();
+        cell.indentationLevel = 1;
+        cell.indentationWidth = 46;
+        cell.textLabel.font = NTMediumFont(15);
+        cell.detailTextLabel.font = NTFont(12);
+
+        UIView *circle = [[UIView alloc]
+            initWithFrame:CGRectMake(12, 12, 36, 36)];
+        circle.layer.cornerRadius = 18;
+        circle.tag = iconTag;
+        NineIconView *icon = [[NineIconView alloc]
+            initWithFrame:circle.bounds iconSize:22];
+        [circle addSubview:icon];
+        [cell.contentView addSubview:circle];
     }
 
     NSDictionary *entity = self.visibleStates[indexPath.row];
     NSString *entityID = entity[@"entity_id"];
-    NSString *state = [entity[@"state"] description];
 
-    NSDictionary *attrs = entity[@"attributes"];
-    NSString *unit = nil;
-    if ([attrs isKindOfClass:[NSDictionary class]]) {
-        id value = attrs[@"unit_of_measurement"];
-        if ([value isKindOfClass:[NSString class]]) unit = value;
-    }
+    UIView *circle = [cell.contentView viewWithTag:iconTag];
+    NineIconView *icon = circle.subviews.firstObject;
+    UIColor *color = NEIconColor(entity);
+    icon.iconName = NEIconName(entity, nil);
+    icon.textColor = color;
+    circle.backgroundColor = [color colorWithAlphaComponent:.2f];
+
+    cell.textLabel.text = NEName(entity, nil);
+    cell.detailTextLabel.text = [NSString stringWithFormat:
+        @"%@  ·  %@", NEStateText(entity, nil), entityID];
 
     BOOL favorite = [self.favorites containsObject:entityID];
-
-    cell.textLabel.text = [NSString stringWithFormat:@"%@%@",
-        favorite ? @"★ " : @"", [self displayName:entity]];
-
-    cell.detailTextLabel.text = [NSString stringWithFormat:
-        @"%@  ·  %@%@",
-        entityID,
-        state ?: @"N/D",
-        unit.length ? [@" " stringByAppendingString:unit] : @""];
-
-    cell.backgroundColor =
-        [UIColor colorWithWhite:0.07 alpha:1];
-    cell.textLabel.textColor = [UIColor whiteColor];
-    cell.textLabel.font = [UIFont systemFontOfSize:15];
-    cell.detailTextLabel.textColor = [UIColor lightGrayColor];
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:11];
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    if (favorite) {
+        NineIconView *star = [[NineIconView alloc]
+            initWithFrame:CGRectMake(0, 0, 24, 24) iconSize:18];
+        star.iconName = @"star";
+        star.textColor = NTHex(0xFFC107, 1);
+        cell.accessoryView = star;
+    } else {
+        cell.accessoryView = nil;
+    }
 
     return cell;
 }
@@ -441,7 +412,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
     // Solo domini e servizi esplicitamente consentiti.
     NSSet *allowedDomains = [NSSet setWithArray:
-        @[@"light", @"switch", @"input_boolean"]];
+        @[@"light", @"switch", @"input_boolean", @"fan"]];
 
     if (![allowedDomains containsObject:domain] ||
         ![@[@"turn_on", @"turn_off"] containsObject:service]) {
@@ -480,8 +451,6 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             [self showError:@"Errore preparazione comando"];
             return;
         }
-
-        self.navigationItem.prompt = @"Invio comando...";
 
         [self createSession];
 
@@ -537,7 +506,7 @@ didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [menu addAction:[UIAlertAction
         actionWithTitle:favorite
             ? @"Rimuovi dai preferiti"
-            : @"★ Aggiungi ai preferiti"
+            : @"Aggiungi ai preferiti"
                   style:UIAlertActionStyleDefault
                 handler:^(UIAlertAction *action) {
 
@@ -555,8 +524,8 @@ didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
 
     [menu addAction:[UIAlertAction
         actionWithTitle:hidden
-            ? @"Mostra entita'"
-            : @"Nascondi entita'"
+            ? @"Mostra nella Home"
+            : @"Nascondi dalla Home"
                   style:UIAlertActionStyleDefault
                 handler:^(UIAlertAction *action) {
 
@@ -572,9 +541,7 @@ didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
         [self applyFilter];
     }]];
 
-    BOOL controllable =
-        [@[@"light", @"switch", @"input_boolean"]
-            containsObject:domain];
+    BOOL controllable = NEIsToggleable(entity);
 
     BOOL available =
         ![state isEqualToString:@"unknown"] &&

@@ -10,33 +10,31 @@ Rebuilder e le funzioni principali risultano operativi.
 
 ## Screenshot
 
-| Dashboard responsiva | Lovelace Rebuilder |
-|---|---|
-| ![Dashboard responsiva di NineHA](docs/screenshots/nineha-responsive-dashboard.png) | ![Lovelace Rebuilder di NineHA](docs/screenshots/nineha-rebuilder.png) |
-| Dashboard nativa | Impostazioni aggiornamento |
-| ![Dashboard nativa di NineHA](docs/screenshots/nineha-native-dashboard.png) | ![Impostazioni di aggiornamento di NineHA](docs/screenshots/nineha-refresh-settings.png) |
-| Configurazione iniziale | |
-| ![Configurazione iniziale di NineHA](docs/screenshots/nineha-login.png) | |
-
-Le schermate utilizzano indirizzi riservati alla documentazione e nomi dimostrativi; non contengono configurazioni Home Assistant private.
+Le schermate in `docs/screenshots` si riferiscono alla serie 0.7 e verranno
+sostituite con nuove immagini anonimizzate dell'interfaccia 0.8.
 
 ## Funzioni principali
 
-- autenticazione con token manuale e flusso OAuth sperimentale;
-- dashboard nativa, Lovelace Rebuilder UIKit e Lovelace originale in WebView;
+- accesso con nome utente e password (login flow di Home Assistant, con
+  verifica in due passaggi), token a lunga durata oppure OAuth;
+- dashboard nativa in stile app ufficiale: tema scuro Home Assistant, badge
+  (meteo, persone, luci accese), schede per stanza e tile card;
+- icone Material Design Icons, le stesse del frontend, incluse le icone
+  personalizzate delle entità;
+- panoramica per stanza con i comandi e i sensori ambientali, scheda di ogni
+  stanza con l'elenco completo raggruppato per tipo;
+- pannello dettagli nativo: slider di luminosità, interruttore, tapparelle,
+  termostato, lettori multimediali, scene, script e pulsanti;
+- tocco sull'icona per accendere/spegnere, tocco sul tile per i dettagli,
+  pressione prolungata per preferiti e per nascondere entità;
 - aggiornamenti live tramite WebSocket, con fallback REST;
-- layout Lovelace `masonry`, `grid`, `sections` e `conditional`;
-- adattatori nativi per card standard e per varie card custom, tra cui Mushroom,
-  Button Card, Bubble Card ed Entity Progress Card;
-- supporto nativo di base per `media-control`;
-- azioni `tap_action`, `hold_action`, toggle, `call-service`,
-  `perform-action`, chiamate REST e Wake-on-LAN;
-- pannello nativo per la luminosità delle luci e pannello dettagli entità;
-- interfaccia scura responsiva ottimizzata per schermi iPad e iPhone legacy;
+- adattatore nativo opzionale per uno switch NAS/VM con stato a più livelli
+  (spento, avvio, online, arresto) ricavato da due sensori;
 - rotazione automatica portrait/landscape, con tutti gli orientamenti su iPad.
 
-Le card non riconosciute vengono mostrate come non supportate anziché essere
-eseguite come codice web nel Rebuilder.
+Dalla versione 0.8 il Lovelace Rebuilder e la Lovelace in WebView sono stati
+rimossi: la dashboard viene costruita dai registri di stanze ed entità di
+Home Assistant, come la panoramica automatica dell'app ufficiale.
 
 ## Requisiti
 
@@ -59,7 +57,7 @@ Il pacchetto IPA viene creato nella directory `packages/`.
 
 La build finale precompilata per ARMv7 è disponibile qui:
 
-- [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa)
+- [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa) (serie precedente)
 - [checksum SHA-256](Releases/SHA256SUMS.txt)
 
 ## Installazione
@@ -74,15 +72,13 @@ Per aggiornare un'installazione già presente si può usare invece
 `ideviceinstaller upgrade`. Il nome dell'IPA generata localmente può variare in
 base alla versione di Theos.
 
-## Azioni Lovelace
+## Accesso con nome utente e password
 
-La build 47 interpreta sia la sintassi legacy `call-service` sia la sintassi
-`perform-action`. I campi `data`, `service_data` e il singolo
-`target.entity_id` vengono inoltrati al servizio Home Assistant dopo una
-conferma esplicita nell'interfaccia.
-
-Esempi, limiti e indicazioni per aggiungere nuovi servizi sono disponibili in
-[Azioni Lovelace e nuovi servizi](docs/lovelace-actions.md).
+NineHA usa il [login flow](https://developers.home-assistant.io/docs/auth_api/)
+documentato da Home Assistant con il provider `homeassistant`. Nel Keychain
+viene salvato soltanto il refresh token: la password non è mai memorizzata.
+Nella pagina Profilo > Sicurezza di Home Assistant la sessione compare con il
+client `lukelefox.github.io` e può essere revocata in qualsiasi momento.
 
 ## Configurazione locale opzionale
 
@@ -97,9 +93,10 @@ cp Sources/NineLocalConfig.user.h.example Sources/NineLocalConfig.user.h
 Modificare quindi soltanto `Sources/NineLocalConfig.user.h`. Il file è escluso
 da Git. Non inserirvi token, password o altre credenziali.
 
-Questa configurazione è necessaria soltanto per gli adattatori nativi locali e
-per i toggle predefiniti esplicitamente autorizzati. Le normali azioni
-`call-service` e `perform-action` non richiedono modifiche al file locale.
+Questa configurazione è necessaria soltanto per l'adattatore NAS: lo switch
+indicato viene mostrato con lo stato ricavato dai due sensori e i comandi di
+accensione/spegnimento (graceful) e arresto forzato chiedono sempre conferma.
+`NINEHA_NAS_TITLE` permette di scegliere il nome mostrato sul tile.
 
 ## Privacy e sicurezza
 
@@ -115,11 +112,12 @@ Per segnalazioni riservate consultare [SECURITY.md](SECURITY.md).
 
 ## Dipendenze
 
-Il repository include SocketRocket nella directory `ThirdParty/SocketRocket`.
-La relativa licenza è conservata accanto ai sorgenti della libreria.
+Il repository include SocketRocket nella directory `ThirdParty/SocketRocket` e
+il font [Material Design Icons](https://pictogrammers.com/library/mdi/) 7.4.47
+in `Resources/MDI`. Le relative licenze sono conservate accanto ai file.
 
 ## Licenza
 
 Il codice NineHA è distribuito con licenza MIT. Le dipendenze incluse restano
-soggette alle rispettive licenze; in particolare, la licenza di SocketRocket è
-conservata nella sua directory.
+soggette alle rispettive licenze, conservate nelle rispettive directory
+(SocketRocket e Material Design Icons).

@@ -4,6 +4,12 @@
 
 static NSString *const NAService = @"org.nineha.client.auth";
 
+// Identità del client per il login con password. Home Assistant
+// accetta redirect_uri sullo stesso host del client_id senza
+// contattarlo; il redirect non viene mai seguito.
+static NSString *const NAPasswordClientID = @"https://lukelefox.github.io/NineHA/";
+static NSString *const NAPasswordRedirect = @"https://lukelefox.github.io/NineHA/auth";
+
 static NSError *NAError(NSString *message) {
     return [NSError errorWithDomain:@"NineHA.Auth"
                                code:1
@@ -32,6 +38,8 @@ static NSString *NAEncode(NSString *value) {
 @property (nonatomic, assign, readwrite) NSInteger lastKeychainStatus;
 @property (nonatomic, copy) NSString *cachedOAuthToken;
 @property (nonatomic, strong) NSDate *oauthExpiry;
+@property (nonatomic, copy) NSString *cachedPasswordToken;
+@property (nonatomic, strong) NSDate *passwordExpiry;
 @end
 
 @implementation NineAuth
@@ -60,6 +68,9 @@ static NSString *NAEncode(NSString *value) {
         if (!self.clientID.length) return nil;
         return [NSString stringWithFormat:@"%@|oauth|%@",
                 base, self.clientID];
+    }
+    if ([kind isEqualToString:@"password"]) {
+        return [base stringByAppendingString:@"|password"];
     }
     return [base stringByAppendingString:@"|manual"];
 }
@@ -346,6 +357,259 @@ forHTTPHeaderField:@"Content-Type"];
         self.cachedOAuthToken = access;
         NSTimeInterval seconds = [result[@"expires_in"] doubleValue];
         self.oauthExpiry = [NSDate dateWithTimeIntervalSinceNow:seconds];
+
+        completion(access, nil);
+    }];
+}
+
+#pragma mark - Login con nome utente e password
+
+- (BOOL)hasPasswordSession {
+    return [self readSecret:@"password"].length > 0;
+}
+
+- (BOOL)hasCredentialsForMode:(NSString *)mode {
+    if ([mode isEqualToString:@"oauth"]) return [self hasOAuthSession];
+    if ([mode isEqualToString:@"password"]) return [self hasPasswordSession];
+    return [self hasManualToken];
+}
+
+- (void)useTokenForMode:(NSString *)mode
+             completion:(NineAuthCompletion)completion {
+    if ([mode isEqualToString:@"oauth"]) {
+        [self useOAuthToken:completion];
+    } else if ([mode isEqualToString:@"password"]) {
+        [self usePasswordToken:completion];
+    } else {
+        [self useManualToken:completion];
+    }
+}
+
+// POST JSON verso il login flow, senza seguire redirect.
+- (void)flowRequest:(NSString *)path
+               body:(NSDictionary *)body
+         completion:(void (^)(NSDictionary *json, NSError *error))completion {
+
+    NSString *base = [self baseURL];
+    NSURL *url = base
+        ? [NSURL URLWithString:[base stringByAppendingString:path]] : nil;
+
+    if (!url) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(nil, NAError(@"Indirizzo del server non valido"));
+        });
+        return;
+    }
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    request.timeoutInterval = 20;
+    request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body
+                                                       options:0
+                                                         error:nil];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+
+    NSURLSessionConfiguration *config =
+        [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
+
+    [[session dataTaskWithRequest:request
+                completionHandler:^(NSData *data, NSURLResponse *response,
+                                    NSError *error) {
+        NSInteger status = [(NSHTTPURLResponse *)response statusCode];
+        id json = data.length
+            ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]
+            : nil;
+
+        NSError *failure = error;
+        if (!failure && (status < 200 || status >= 300)) {
+            failure = NAError(status == 404 || status == 405
+                ? @"Login con password non disponibile su questo server"
+                : [NSString stringWithFormat:@"Errore HTTP %ld", (long)status]);
+        }
+        if (!failure && ![json isKindOfClass:[NSDictionary class]]) {
+            failure = NAError(@"Risposta di login non valida");
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(failure ? nil : json, failure);
+        });
+        [session finishTasksAndInvalidate];
+    }] resume];
+}
+
+static NSString *NAFlowErrorText(NSDictionary *errors) {
+    id base = [errors isKindOfClass:[NSDictionary class]] ? errors[@"base"] : nil;
+    if ([base isEqualToString:@"invalid_auth"])
+        return @"Nome utente o password non validi";
+    if ([base isEqualToString:@"invalid_code"])
+        return @"Codice di verifica non valido";
+    if ([base isKindOfClass:[NSString class]])
+        return [@"Accesso non riuscito: " stringByAppendingString:base];
+    return @"Accesso non riuscito";
+}
+
+- (void)loginWithUsername:(NSString *)username
+                 password:(NSString *)password
+               mfaHandler:(void (^)(NineAuthMFAResponder respond))mfaHandler
+               completion:(NineAuthCompletion)completion {
+
+    if (!username.length || !password.length) {
+        NAComplete(completion, nil, NAError(@"Inserisci nome utente e password"));
+        return;
+    }
+
+    [self flowRequest:@"/auth/login_flow"
+                 body:@{
+        @"client_id": NAPasswordClientID,
+        @"handler": @[@"homeassistant", [NSNull null]],
+        @"redirect_uri": NAPasswordRedirect
+    } completion:^(NSDictionary *json, NSError *error) {
+        NSString *flowID = json[@"flow_id"];
+
+        if (error || ![flowID isKindOfClass:[NSString class]] ||
+            !flowID.length) {
+            completion(nil, error ?: NAError(@"Login flow non avviato"));
+            return;
+        }
+
+        [self continueFlow:flowID
+                      body:@{@"client_id": NAPasswordClientID,
+                             @"username": username,
+                             @"password": password}
+                mfaHandler:mfaHandler
+                completion:completion];
+    }];
+}
+
+- (void)continueFlow:(NSString *)flowID
+                body:(NSDictionary *)body
+          mfaHandler:(void (^)(NineAuthMFAResponder respond))mfaHandler
+          completion:(NineAuthCompletion)completion {
+
+    NSString *path = [@"/auth/login_flow/" stringByAppendingString:
+        [flowID stringByAddingPercentEncodingWithAllowedCharacters:
+            [NSCharacterSet alphanumericCharacterSet]]];
+
+    [self flowRequest:path body:body
+           completion:^(NSDictionary *json, NSError *error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+
+        NSString *type = json[@"type"];
+        NSString *step = json[@"step_id"];
+        NSDictionary *errors = json[@"errors"];
+
+        if ([type isEqualToString:@"create_entry"]) {
+            NSString *code = json[@"result"];
+            if (![code isKindOfClass:[NSString class]] || !code.length) {
+                completion(nil, NAError(@"Codice di autorizzazione mancante"));
+                return;
+            }
+            [self exchangePasswordCode:code completion:completion];
+            return;
+        }
+
+        if ([type isEqualToString:@"abort"]) {
+            NSString *reason = json[@"reason"];
+            completion(nil, NAError([reason isKindOfClass:[NSString class]]
+                ? [@"Accesso interrotto: " stringByAppendingString:reason]
+                : @"Accesso interrotto"));
+            return;
+        }
+
+        if (![type isEqualToString:@"form"]) {
+            completion(nil, NAError(@"Risposta di login inattesa"));
+            return;
+        }
+
+        // Errore sul passo corrente (credenziali o codice errati).
+        if ([errors isKindOfClass:[NSDictionary class]] && errors.count) {
+            completion(nil, NAError(NAFlowErrorText(errors)));
+            return;
+        }
+
+        // Autenticazione a due fattori: chiediamo il codice.
+        if ([step isEqualToString:@"mfa"] && mfaHandler) {
+            mfaHandler(^(NSString *code) {
+                if (!code.length) {
+                    completion(nil, NAError(@"Accesso annullato"));
+                    return;
+                }
+                [self continueFlow:flowID
+                              body:@{@"client_id": NAPasswordClientID,
+                                     @"code": code}
+                        mfaHandler:mfaHandler
+                        completion:completion];
+            });
+            return;
+        }
+
+        completion(nil, NAError(@"Passo di login non supportato"));
+    }];
+}
+
+- (void)exchangePasswordCode:(NSString *)code
+                  completion:(NineAuthCompletion)completion {
+    [self tokenRequest:@{
+        @"grant_type": @"authorization_code",
+        @"client_id": NAPasswordClientID,
+        @"code": code
+    } completion:^(NSDictionary *result, NSError *error) {
+        NSString *access = result[@"access_token"];
+        NSString *refresh = result[@"refresh_token"];
+
+        if (error || ![access isKindOfClass:[NSString class]] ||
+            ![refresh isKindOfClass:[NSString class]]) {
+            completion(nil, error ?: NAError(@"Token non ricevuto"));
+            return;
+        }
+
+        if (![self storeSecret:refresh kind:@"password"]) {
+            completion(nil, NAError(@"Impossibile salvare la sessione"));
+            return;
+        }
+
+        self.cachedPasswordToken = access;
+        self.passwordExpiry = [NSDate dateWithTimeIntervalSinceNow:
+            [result[@"expires_in"] doubleValue]];
+
+        completion(access, nil);
+    }];
+}
+
+- (void)usePasswordToken:(NineAuthCompletion)completion {
+    if (self.cachedPasswordToken.length &&
+        [self.passwordExpiry timeIntervalSinceNow] > 60) {
+        NAComplete(completion, self.cachedPasswordToken, nil);
+        return;
+    }
+
+    NSString *refresh = [self readSecret:@"password"];
+    if (!refresh.length) {
+        NAComplete(completion, nil,
+                   NAError(@"Sessione scaduta: accedi di nuovo"));
+        return;
+    }
+
+    [self tokenRequest:@{
+        @"grant_type": @"refresh_token",
+        @"client_id": NAPasswordClientID,
+        @"refresh_token": refresh
+    } completion:^(NSDictionary *result, NSError *error) {
+        NSString *access = result[@"access_token"];
+
+        if (error || ![access isKindOfClass:[NSString class]]) {
+            completion(nil, error ?: NAError(@"Rinnovo della sessione non riuscito"));
+            return;
+        }
+
+        self.cachedPasswordToken = access;
+        self.passwordExpiry = [NSDate dateWithTimeIntervalSinceNow:
+            [result[@"expires_in"] doubleValue]];
 
         completion(access, nil);
     }];

@@ -19,6 +19,11 @@
 #define NINEHA_NAS_STATUS_ENTITY @""
 #endif
 
+// Nome mostrato sul tile NAS (vuoto = friendly_name dello switch).
+#ifndef NINEHA_NAS_TITLE
+#define NINEHA_NAS_TITLE @""
+#endif
+
 #ifndef NINEHA_NAS_VM_STATUS_ENTITY
 #define NINEHA_NAS_VM_STATUS_ENTITY @""
 #endif

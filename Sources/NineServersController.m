@@ -1,4 +1,5 @@
 #import "NineServersController.h"
+#import "NineTheme.h"
 
 @implementation NineServersController
 
@@ -6,6 +7,7 @@
     [super viewDidLoad];
 
     self.title = @"Server";
+    NTStyleTableView(self.tableView);
     self.tableView.tableFooterView = [[UIView alloc] init];
 }
 
@@ -59,13 +61,15 @@ titleForHeaderInSection:(NSInteger)section {
         cell = [[UITableViewCell alloc]
             initWithStyle:UITableViewCellStyleSubtitle
           reuseIdentifier:identifier];
+        NTStyleCell(cell);
     }
 
     cell.accessoryType = UITableViewCellAccessoryNone;
-    cell.textLabel.textColor = [UIColor blackColor];
+    cell.textLabel.textColor = NTText();
 
     if (indexPath.section == 2) {
-        cell.textLabel.text = @"＋ Aggiungi server";
+        cell.textLabel.text = @"Aggiungi server";
+        cell.textLabel.textColor = NTPrimary();
         cell.detailTextLabel.text = @"Configura URL e autenticazione";
         return cell;
     }
