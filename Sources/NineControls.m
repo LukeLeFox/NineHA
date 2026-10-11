@@ -1,6 +1,7 @@
 #import "NineControls.h"
 #import "NineIcons.h"
 #import "NineTheme.h"
+#import "NineEntity.h"
 
 #pragma mark - Tile
 
@@ -110,6 +111,322 @@
 
     self.accessibilityLabel =
         [NSString stringWithFormat:@"%@, %@", name ?: @"", state ?: @""];
+}
+
+@end
+
+#pragma mark - Griglia valori
+
+@implementation NineValueView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.iconCircle.hidden = YES;
+        self.nameLabel.font = NTMediumFont(12);
+        self.nameLabel.textColor = NTSecondaryText();
+        self.stateLabel.font = NTMediumFont(21);
+        self.stateLabel.adjustsFontSizeToFitWidth = YES;
+        self.stateLabel.minimumScaleFactor = .6f;
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = self.bounds.size.width;
+    self.nameLabel.frame = CGRectMake(12, 9, width - 24, 16);
+    self.stateLabel.frame = CGRectMake(12, 27, width - 24, 28);
+}
+
+- (void)setName:(NSString *)name
+          state:(NSString *)state
+           icon:(NSString *)icon
+          color:(UIColor *)color
+         active:(BOOL)active
+    unavailable:(BOOL)unavailable {
+    [super setName:name state:state icon:icon color:color
+            active:active unavailable:unavailable];
+    self.nameLabel.textColor = NTSecondaryText();
+    self.stateLabel.textColor = unavailable ? NTDisabledText() : color;
+}
+
+@end
+
+#pragma mark - Meteo
+
+@interface NineWeatherView ()
+@property (nonatomic, strong) NineIconView *bigIcon;
+@property (nonatomic, strong) UILabel *temperatureLabel;
+@property (nonatomic, strong) UILabel *conditionLabel;
+@property (nonatomic, strong) UILabel *detailsLabel;
+@property (nonatomic, strong) NSMutableArray *days;
+@property (nonatomic, strong) NSDictionary *entity;
+@end
+
+@implementation NineWeatherView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.iconCircle.hidden = YES;
+        self.nameLabel.hidden = YES;
+        self.stateLabel.hidden = YES;
+
+        _bigIcon = [[NineIconView alloc] initWithFrame:CGRectZero iconSize:58];
+        _bigIcon.textColor = NTPrimary();
+        [self addSubview:_bigIcon];
+
+        _temperatureLabel = [[UILabel alloc] init];
+        _temperatureLabel.font = [UIFont systemFontOfSize:40 weight:UIFontWeightLight];
+        _temperatureLabel.textColor = NTText();
+        [self addSubview:_temperatureLabel];
+
+        _conditionLabel = [[UILabel alloc] init];
+        _conditionLabel.font = NTMediumFont(14);
+        _conditionLabel.textColor = NTText();
+        [self addSubview:_conditionLabel];
+
+        _detailsLabel = [[UILabel alloc] init];
+        _detailsLabel.font = NTFont(12);
+        _detailsLabel.textColor = NTSecondaryText();
+        _detailsLabel.numberOfLines = 2;
+        [self addSubview:_detailsLabel];
+
+        _days = [NSMutableArray array];
+    }
+    return self;
+}
+
+- (void)setName:(NSString *)name state:(NSString *)state icon:(NSString *)icon
+          color:(UIColor *)color active:(BOOL)active unavailable:(BOOL)unavailable {
+    // Il contenuto arriva da updateWithEntity:.
+}
+
+- (void)updateWithEntity:(NSDictionary *)entity {
+    self.entity = entity;
+    NSDictionary *attrs = NEAttributes(entity);
+    NSString *condition = NEStateValue(entity);
+
+    self.bigIcon.iconName = NEWeatherIcon(condition);
+    self.conditionLabel.text = NEWeatherConditionText(condition);
+
+    NSNumber *temperature = attrs[@"temperature"];
+    NSString *unit = [attrs[@"temperature_unit"] isKindOfClass:[NSString class]]
+        ? attrs[@"temperature_unit"] : @"°";
+    self.temperatureLabel.text = [temperature isKindOfClass:[NSNumber class]]
+        ? [NSString stringWithFormat:@"%@ %@",
+            NEFormatNumber(temperature.doubleValue, 1), unit] : @"—";
+
+    NSMutableArray *details = [NSMutableArray array];
+    if ([attrs[@"humidity"] isKindOfClass:[NSNumber class]])
+        [details addObject:[NSString stringWithFormat:@"Umidità %@ %%",
+            NEFormatNumber([attrs[@"humidity"] doubleValue], 0)]];
+    if ([attrs[@"wind_speed"] isKindOfClass:[NSNumber class]]) {
+        NSString *windUnit = [attrs[@"wind_speed_unit"] isKindOfClass:[NSString class]]
+            ? attrs[@"wind_speed_unit"] : @"";
+        [details addObject:[NSString stringWithFormat:@"Vento %@ %@",
+            NEFormatNumber([attrs[@"wind_speed"] doubleValue], 0), windUnit]];
+    }
+    self.detailsLabel.text = [details componentsJoinedByString:@"\n"];
+    self.accessibilityLabel = [NSString stringWithFormat:@"Meteo, %@, %@",
+        self.conditionLabel.text ?: @"", self.temperatureLabel.text ?: @""];
+
+    [self rebuildDays];
+}
+
+- (void)setForecast:(NSArray *)forecast {
+    _forecast = forecast;
+    [self rebuildDays];
+}
+
+- (void)rebuildDays {
+    for (UIView *view in self.days) [view removeFromSuperview];
+    [self.days removeAllObjects];
+
+    static NSDateFormatter *parser, *weekday;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        parser = [[NSDateFormatter alloc] init];
+        parser.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        parser.dateFormat = @"yyyy-MM-dd'T'HH:mm:ssZZZZZ";
+        weekday = [[NSDateFormatter alloc] init];
+        weekday.locale = [NSLocale localeWithLocaleIdentifier:@"it_IT"];
+        weekday.dateFormat = @"EEE";
+    });
+
+    NSUInteger count = MIN((NSUInteger)5, self.forecast.count);
+    for (NSUInteger i = 0; i < count; i++) {
+        NSDictionary *day = self.forecast[i];
+        if (![day isKindOfClass:[NSDictionary class]]) continue;
+
+        UIView *column = [[UIView alloc] init];
+        column.userInteractionEnabled = NO;
+
+        UILabel *name = [[UILabel alloc] init];
+        NSString *iso = [day[@"datetime"] isKindOfClass:[NSString class]]
+            ? [day[@"datetime"] stringByReplacingOccurrencesOfString:@"Z"
+                                                          withString:@"+00:00"] : nil;
+        NSRange fraction = iso ? [iso rangeOfString:@"\\.[0-9]+"
+                                            options:NSRegularExpressionSearch]
+                               : NSMakeRange(NSNotFound, 0);
+        if (fraction.location != NSNotFound)
+            iso = [iso stringByReplacingCharactersInRange:fraction withString:@""];
+        NSDate *date = iso ? [parser dateFromString:iso] : nil;
+        name.text = date ? [[weekday stringFromDate:date] capitalizedString] : @"";
+        name.font = NTMediumFont(12);
+        name.textColor = NTSecondaryText();
+        name.textAlignment = NSTextAlignmentCenter;
+        [column addSubview:name];
+
+        NineIconView *icon = [[NineIconView alloc] initWithFrame:CGRectZero iconSize:22];
+        icon.iconName = NEWeatherIcon(day[@"condition"]);
+        icon.textColor = NTPrimary();
+        [column addSubview:icon];
+
+        UILabel *range = [[UILabel alloc] init];
+        NSNumber *high = day[@"temperature"], *low = day[@"templow"];
+        range.text = [high isKindOfClass:[NSNumber class]]
+            ? ([low isKindOfClass:[NSNumber class]]
+                ? [NSString stringWithFormat:@"%@° / %@°",
+                    NEFormatNumber(high.doubleValue, 0), NEFormatNumber(low.doubleValue, 0)]
+                : [NSString stringWithFormat:@"%@°", NEFormatNumber(high.doubleValue, 0)])
+            : @"";
+        range.font = NTFont(12);
+        range.textColor = NTText();
+        range.textAlignment = NSTextAlignmentCenter;
+        range.adjustsFontSizeToFitWidth = YES;
+        range.minimumScaleFactor = .7f;
+        [column addSubview:range];
+
+        [self addSubview:column];
+        [self.days addObject:column];
+    }
+
+    [self setNeedsLayout];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = self.bounds.size.width;
+
+    self.bigIcon.frame = CGRectMake(12, 14, 70, 70);
+    self.temperatureLabel.frame = CGRectMake(90, 14, width - 190, 46);
+    self.conditionLabel.frame = CGRectMake(92, 58, width - 194, 20);
+    self.detailsLabel.frame = CGRectMake(width - 112, 22, 100, 40);
+    self.detailsLabel.textAlignment = NSTextAlignmentRight;
+
+    if (!self.days.count) return;
+
+    // Riga delle previsioni sotto un divisore.
+    CGFloat top = 98;
+    CGFloat columnWidth = (width - 16) / self.days.count;
+    for (NSUInteger i = 0; i < self.days.count; i++) {
+        UIView *column = self.days[i];
+        column.frame = CGRectMake(8 + columnWidth * i, top, columnWidth, 74);
+        UILabel *name = column.subviews[0];
+        UIView *icon = column.subviews[1];
+        UILabel *range = column.subviews[2];
+        name.frame = CGRectMake(0, 0, columnWidth, 16);
+        icon.frame = CGRectMake((columnWidth - 28) / 2, 18, 28, 28);
+        range.frame = CGRectMake(2, 48, columnWidth - 4, 16);
+    }
+}
+
+@end
+
+#pragma mark - Orologio
+
+@interface NineClockView ()
+@property (nonatomic, strong) UILabel *timeLabel;
+@property (nonatomic, strong) UILabel *dateLabel;
+@property (nonatomic, strong) NSTimer *timer;
+@end
+
+@implementation NineClockView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = NTCard();
+        self.layer.cornerRadius = 12;
+        self.layer.borderWidth = 1.0f / [UIScreen mainScreen].scale;
+        self.layer.borderColor = NTBorder().CGColor;
+
+        _timeLabel = [[UILabel alloc] init];
+        _timeLabel.font = [UIFont monospacedDigitSystemFontOfSize:54
+                                                           weight:UIFontWeightLight];
+        _timeLabel.textColor = NTText();
+        _timeLabel.textAlignment = NSTextAlignmentCenter;
+        _timeLabel.adjustsFontSizeToFitWidth = YES;
+        _timeLabel.minimumScaleFactor = .5f;
+        [self addSubview:_timeLabel];
+
+        _dateLabel = [[UILabel alloc] init];
+        _dateLabel.font = NTFont(15);
+        _dateLabel.textColor = NTSecondaryText();
+        _dateLabel.textAlignment = NSTextAlignmentCenter;
+        [self addSubview:_dateLabel];
+
+        self.isAccessibilityElement = YES;
+        [self tick];
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
+    self.timeLabel.frame = CGRectMake(12, height / 2 - 44, width - 24, 62);
+    self.dateLabel.frame = CGRectMake(12, height / 2 + 20, width - 24, 20);
+}
+
+- (void)setTwelveHour:(BOOL)twelveHour {
+    _twelveHour = twelveHour;
+    [self tick];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    [self.timer invalidate];
+    self.timer = nil;
+
+    if (self.window) {
+        [self tick];
+        self.timer = [NSTimer scheduledTimerWithTimeInterval:1
+                                                      target:self
+                                                    selector:@selector(tick)
+                                                    userInfo:nil
+                                                     repeats:YES];
+    }
+}
+
+- (void)tick {
+    static NSDateFormatter *time24, *time12, *date;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSLocale *italian = [NSLocale localeWithLocaleIdentifier:@"it_IT"];
+        time24 = [[NSDateFormatter alloc] init];
+        time24.locale = italian;
+        time24.dateFormat = @"HH:mm:ss";
+        time12 = [[NSDateFormatter alloc] init];
+        time12.locale = [NSLocale localeWithLocaleIdentifier:@"en_US"];
+        time12.dateFormat = @"h:mm:ss a";
+        date = [[NSDateFormatter alloc] init];
+        date.locale = italian;
+        date.dateFormat = @"EEEE d MMMM";
+    });
+
+    NSDate *now = [NSDate date];
+    self.timeLabel.text = [(self.twelveHour ? time12 : time24) stringFromDate:now];
+    self.dateLabel.text = [[date stringFromDate:now] capitalizedString];
+    self.accessibilityLabel = [NSString stringWithFormat:@"%@, %@",
+        self.timeLabel.text, self.dateLabel.text];
+}
+
+- (void)dealloc {
+    [_timer invalidate];
 }
 
 @end

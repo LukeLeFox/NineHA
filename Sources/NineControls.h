@@ -12,6 +12,7 @@
 @interface NineTileView : UIControl
 
 @property (nonatomic, copy) NSString *entityID;
+@property (nonatomic, copy) NSString *customName;   // nome scelto dall'utente
 @property (nonatomic, strong, readonly) NineIconView *iconView;
 @property (nonatomic, strong, readonly) UIView *iconCircle;
 @property (nonatomic, strong, readonly) UILabel *nameLabel;
@@ -28,6 +29,21 @@
          active:(BOOL)active
     unavailable:(BOOL)unavailable;
 
+@end
+
+// Cella della griglia valori: nome breve e valore grande.
+@interface NineValueView : NineTileView
+@end
+
+// Card meteo con temperatura, dettagli e previsioni giornaliere.
+@interface NineWeatherView : NineTileView
+- (void)updateWithEntity:(NSDictionary *)entity;
+@property (nonatomic, strong) NSArray *forecast;   // da weather.get_forecasts
+@end
+
+// Orologio grande con data, aggiornato ogni secondo.
+@interface NineClockView : UIView
+@property (nonatomic, assign) BOOL twelveHour;
 @end
 
 // Badge a pillola in cima alla dashboard.

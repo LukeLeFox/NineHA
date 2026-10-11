@@ -123,6 +123,29 @@ static UITableViewCell *NineEditorEntityCell(UITableView *tableView,
     return self.dashboard[@"sections"][section - 1][@"items"] ?: @[];
 }
 
+// Righe di una sezione: 0 titolo, 1 tipo, poi entità e "Aggiungi".
+static NSInteger const NineEditorItemOffset = 2;
+
+- (NSDictionary *)sectionAt:(NSInteger)section {
+    return self.dashboard[@"sections"][section - 1];
+}
+
+- (BOOL)isClockSection:(NSInteger)section {
+    return [[self sectionAt:section][@"style"] isEqual:@"clock"];
+}
+
+- (NSInteger)addRowForSection:(NSInteger)section {
+    if ([self isClockSection:section]) return NSNotFound;
+    return [self itemsInTableSection:section].count + NineEditorItemOffset;
+}
+
+- (BOOL)isEntityRow:(NSIndexPath *)indexPath {
+    if (![self isDashboardSection:indexPath.section]) return NO;
+    NSInteger count = [self itemsInTableSection:indexPath.section].count;
+    return indexPath.row >= NineEditorItemOffset &&
+           indexPath.row < count + NineEditorItemOffset;
+}
+
 #pragma mark Struttura
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -134,7 +157,8 @@ static UITableViewCell *NineEditorEntityCell(UITableView *tableView,
  numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
     if ([self isDashboardSection:section])
-        return [self itemsInTableSection:section].count + 2;
+        return [self itemsInTableSection:section].count + NineEditorItemOffset +
+            ([self isClockSection:section] ? 0 : 1);
     return 2;
 }
 
@@ -215,16 +239,38 @@ titleForFooterInSection:(NSInteger)section {
             return cell;
         }
 
-        if (row == (NSInteger)items.count + 1) {
+        if (row == 1) {
             UITableViewCell *cell = [self plainCell:tableView];
-            cell.textLabel.text = @"Aggiungi entità…";
+            NSDictionary *info = [self sectionAt:section];
+            NSString *style = info[@"style"] ?: @"tiles";
+            NSString *detail = [NineCustomDashboards titleForStyle:style];
+            if ([style isEqualToString:@"clock"]) {
+                detail = [detail stringByAppendingString:
+                    [info[@"format"] isEqual:@"12"] ? @" 12h" : @" 24h"];
+            }
+            cell.textLabel.text = @"Tipo";
+            cell.detailTextLabel.text = detail;
+            cell.editingAccessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            return cell;
+        }
+
+        if (row == [self addRowForSection:section]) {
+            UITableViewCell *cell = [self plainCell:tableView];
+            BOOL weather = [[self sectionAt:section][@"style"] isEqual:@"weather"];
+            cell.textLabel.text = weather ? @"Scegli entità meteo…" : @"Aggiungi entità…";
             cell.textLabel.textColor = NTPrimary();
             return cell;
         }
 
-        NSString *entityID = items[row - 1];
-        return NineEditorEntityCell(tableView, self.stateByID[entityID],
-                                    self.registry[entityID], entityID);
+        NSString *entityID = items[row - NineEditorItemOffset];
+        UITableViewCell *cell = NineEditorEntityCell(tableView,
+            self.stateByID[entityID], self.registry[entityID], entityID);
+        NSString *custom = [self sectionAt:section][@"names"][entityID];
+        if (custom.length) {
+            cell.textLabel.text = [NSString stringWithFormat:@"%@  (%@)", custom,
+                NEName(self.stateByID[entityID], self.registry[entityID])];
+        }
+        return cell;
     }
 
     UITableViewCell *cell = [self plainCell:tableView];
@@ -245,15 +291,15 @@ titleForFooterInSection:(NSInteger)section {
     if (![self isDashboardSection:indexPath.section])
         return UITableViewCellEditingStyleNone;
 
-    NSInteger count = [self itemsInTableSection:indexPath.section].count;
-
-    if (indexPath.row == count + 1) return UITableViewCellEditingStyleInsert;
+    if (indexPath.row == [self addRowForSection:indexPath.section])
+        return UITableViewCellEditingStyleInsert;
     if (indexPath.row == 0) {
         return [self dashboardSectionCount] > 1
             ? UITableViewCellEditingStyleDelete
             : UITableViewCellEditingStyleNone;
     }
-    return UITableViewCellEditingStyleDelete;
+    return [self isEntityRow:indexPath]
+        ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
 }
 
 - (BOOL)tableView:(UITableView *)tableView
@@ -287,7 +333,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
     NSMutableDictionary *section = [sections[index] mutableCopy];
     NSMutableArray *items = [section[@"items"] mutableCopy];
-    [items removeObjectAtIndex:indexPath.row - 1];
+    [items removeObjectAtIndex:indexPath.row - NineEditorItemOffset];
     section[@"items"] = items;
     sections[index] = section;
     [self saveSections:sections];
@@ -297,28 +343,24 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 }
 
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (![self isDashboardSection:indexPath.section]) return NO;
-    NSInteger count = [self itemsInTableSection:indexPath.section].count;
-    return indexPath.row >= 1 && indexPath.row <= count;
+    return [self isEntityRow:indexPath];
 }
 
 - (NSIndexPath *)tableView:(UITableView *)tableView
 targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source
        toProposedIndexPath:(NSIndexPath *)proposed {
-    NSInteger section = proposed.section;
     NSInteger last = [self dashboardSectionCount];
+    NSInteger section = MAX(1, MIN(last, proposed.section));
 
-    if (section < 1) return [NSIndexPath indexPathForRow:1 inSection:1];
-    if (section > last) {
-        NSInteger count = [self itemsInTableSection:last].count;
-        // Nella stessa sezione l'ultima posizione utile è "count".
-        NSInteger row = source.section == last ? count : count + 1;
-        return [NSIndexPath indexPathForRow:MAX(1, row) inSection:last];
-    }
+    // Le sezioni orologio non contengono entità.
+    if ([self isClockSection:section]) section = source.section;
 
     NSInteger count = [self itemsInTableSection:section].count;
-    NSInteger maximum = source.section == section ? count : count + 1;
-    NSInteger row = MAX(1, MIN(maximum, proposed.row));
+    NSInteger maximum = (source.section == section ? count - 1 : count)
+        + NineEditorItemOffset;
+    NSInteger row = proposed.section < section ? NineEditorItemOffset
+        : (proposed.section > section ? maximum : proposed.row);
+    row = MAX(NineEditorItemOffset, MIN(maximum, row));
     return [NSIndexPath indexPathForRow:row inSection:section];
 }
 
@@ -329,16 +371,24 @@ moveRowAtIndexPath:(NSIndexPath *)from
 
     NSMutableDictionary *source = [sections[from.section - 1] mutableCopy];
     NSMutableArray *sourceItems = [source[@"items"] mutableCopy];
-    NSString *entityID = sourceItems[from.row - 1];
-    [sourceItems removeObjectAtIndex:from.row - 1];
+    NSString *entityID = sourceItems[from.row - NineEditorItemOffset];
+    NSString *name = source[@"names"][entityID];
+    [sourceItems removeObjectAtIndex:from.row - NineEditorItemOffset];
     source[@"items"] = sourceItems;
     sections[from.section - 1] = source;
 
     NSMutableDictionary *target = [sections[to.section - 1] mutableCopy];
     NSMutableArray *targetItems = [target[@"items"] mutableCopy];
-    NSInteger position = MIN((NSInteger)targetItems.count, to.row - 1);
+    NSInteger position = MIN((NSInteger)targetItems.count,
+                             to.row - NineEditorItemOffset);
     [targetItems insertObject:entityID atIndex:MAX(0, position)];
     target[@"items"] = targetItems;
+    if (name) {
+        NSMutableDictionary *names = [target[@"names"] mutableCopy]
+            ?: [NSMutableDictionary dictionary];
+        names[entityID] = name;
+        target[@"names"] = names;
+    }
     sections[to.section - 1] = target;
 
     [self saveSections:sections];
@@ -363,7 +413,14 @@ moveRowAtIndexPath:(NSIndexPath *)from
     }
 
     if ([self isDashboardSection:section]) {
-        NSInteger count = [self itemsInTableSection:section].count;
+        if (row == 1) {
+            [self chooseStyleForSection:section];
+            return;
+        }
+        if ([self isEntityRow:indexPath]) {
+            [self renameEntityAt:indexPath];
+            return;
+        }
 
         if (row == 0) {
             NSString *current = self.dashboard[@"sections"][section - 1][@"title"];
@@ -377,7 +434,7 @@ moveRowAtIndexPath:(NSIndexPath *)from
                 [self saveSections:sections];
                 [self.tableView reloadData];
             }];
-        } else if (row == count + 1) {
+        } else if (row == [self addRowForSection:section]) {
             [self addEntitiesToSection:section];
         }
         return;
@@ -386,13 +443,82 @@ moveRowAtIndexPath:(NSIndexPath *)from
     if (section == [self dashboardSectionCount] + 1) {
         if (row == 0) {
             NSMutableArray *sections = [self sections];
-            [sections addObject:@{@"title": @"", @"items": @[]}];
+            [sections addObject:@{@"title": @"", @"items": @[], @"style": @"tiles"}];
             [self saveSections:sections];
             [self.tableView reloadData];
         } else {
             [self confirmDelete];
         }
     }
+}
+
+- (void)updateSection:(NSInteger)section
+                 with:(void (^)(NSMutableDictionary *section))change {
+    NSMutableArray *sections = [self sections];
+    NSMutableDictionary *edited = [sections[section - 1] mutableCopy];
+    change(edited);
+    sections[section - 1] = edited;
+    [self saveSections:sections];
+    [self.tableView reloadData];
+}
+
+- (void)chooseStyleForSection:(NSInteger)section {
+    UIAlertController *menu = [UIAlertController
+        alertControllerWithTitle:@"Tipo di sezione"
+                         message:nil
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+
+    NSArray *options = @[
+        @[@"Tile", @"tiles", @""],
+        @[@"Griglia valori (sensori)", @"grid", @""],
+        @[@"Orologio 24h", @"clock", @"24"],
+        @[@"Orologio 12h", @"clock", @"12"],
+        @[@"Meteo con previsioni", @"weather", @""]
+    ];
+
+    for (NSArray *option in options) {
+        [menu addAction:[UIAlertAction actionWithTitle:option[0]
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *a) {
+            [self updateSection:section with:^(NSMutableDictionary *edited) {
+                edited[@"style"] = option[1];
+                if ([option[2] length]) edited[@"format"] = option[2];
+            }];
+        }]];
+    }
+    [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+
+    UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:
+        [NSIndexPath indexPathForRow:1 inSection:section]];
+    menu.popoverPresentationController.sourceView = cell ?: self.view;
+    menu.popoverPresentationController.sourceRect = cell ? cell.bounds : CGRectZero;
+    [self presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)renameEntityAt:(NSIndexPath *)indexPath {
+    NSInteger section = indexPath.section;
+    NSString *entityID = [self itemsInTableSection:section]
+        [indexPath.row - NineEditorItemOffset];
+    NSString *current = [self sectionAt:section][@"names"][entityID];
+
+    [self askText:@"Nome da mostrare (vuoto = predefinito)"
+          current:current ?: NEName(self.stateByID[entityID], self.registry[entityID])
+       completion:^(NSString *text) {
+        [self updateSection:section with:^(NSMutableDictionary *edited) {
+            NSMutableDictionary *names = [edited[@"names"] mutableCopy]
+                ?: [NSMutableDictionary dictionary];
+            NSString *standard = NEName(self.stateByID[entityID],
+                                        self.registry[entityID]);
+            if (text.length && ![text isEqualToString:standard]) {
+                names[entityID] = text;
+            } else {
+                [names removeObjectForKey:entityID];
+            }
+            edited[@"names"] = names;
+        }];
+    }];
 }
 
 - (void)addEntitiesToSection:(NSInteger)section {

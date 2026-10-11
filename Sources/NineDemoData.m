@@ -209,6 +209,21 @@ static NSDictionary *NDEntity(NSString *entityID, NSString *state,
     return map;
 }
 
++ (NSArray *)forecast {
+    NSArray *conditions = @[@"partlycloudy", @"sunny", @"rainy", @"cloudy", @"sunny"];
+    NSArray *highs = @[@19, @22, @16, @18, @21];
+    NSArray *lows = @[@11, @12, @10, @9, @12];
+    NSMutableArray *days = [NSMutableArray array];
+    for (NSUInteger i = 0; i < conditions.count; i++) {
+        [days addObject:@{
+            @"datetime": NDAgo(-86400.0 * i),
+            @"condition": conditions[i],
+            @"temperature": highs[i],
+            @"templow": lows[i]}];
+    }
+    return days;
+}
+
 + (NSDictionary *)registry {
     NSMutableDictionary *registry = [NSMutableDictionary dictionary];
     NSDictionary *areas = [self entityAreas];

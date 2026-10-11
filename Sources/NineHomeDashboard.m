@@ -8,11 +8,13 @@
 #import "NineEntity.h"
 #import "NineIcons.h"
 #import "NineLiveSocket.h"
+#import "NineLovelaceImport.h"
 #import "NineMoreInfoPanel.h"
 #import "NineNASAdapter.h"
 #import "NineRefreshSettingsController.h"
 #import "NineServersController.h"
 #import "NineTheme.h"
+#import "NineWSRequest.h"
 #import <math.h>
 
 static NSString *const NineHomeTab = @"__home__";
@@ -41,6 +43,8 @@ static CGFloat const NineTabsHeight = 46;
 @property (nonatomic, copy) NSString *selectedTab;
 @property (nonatomic, copy) NSString *currentDashboardID;   // nil = panoramica
 @property (nonatomic, copy) NSString *locationName;
+@property (nonatomic, strong) NSMutableDictionary *forecasts;
+@property (nonatomic, strong) NSMutableDictionary *forecastDates;
 @property (nonatomic, strong) NSMutableArray *favorites;
 @property (nonatomic, strong) NSMutableSet *hiddenEntities;
 
@@ -353,6 +357,184 @@ static CGFloat const NineTabsHeight = 46;
     }]];
 
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showNewDashboardMenu {
+    UIAlertController *menu = [UIAlertController
+        alertControllerWithTitle:@"Nuova dashboard"
+                         message:nil
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+
+    [menu addAction:[UIAlertAction actionWithTitle:@"Dashboard vuota"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        [self createDashboardAddingEntity:nil];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Importa da Lovelace…"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(UIAlertAction *a) {
+        [self importFromLovelace];
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                             style:UIAlertActionStyleCancel
+                                           handler:nil]];
+
+    [self presentSheet:menu];
+}
+
+// Su iPad i fogli di azione richiedono un punto di ancoraggio.
+- (void)presentSheet:(UIAlertController *)sheet {
+    sheet.popoverPresentationController.sourceView = self.view;
+    sheet.popoverPresentationController.sourceRect =
+        CGRectMake(CGRectGetMidX(self.view.bounds), 0, 1, 1);
+    sheet.popoverPresentationController.permittedArrowDirections =
+        UIPopoverArrowDirectionUp;
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)importFromLovelace {
+    [self.spinner startAnimating];
+    __weak typeof(self) weakSelf = self;
+
+    [self withToken:^(NSString *token, NSError *error) {
+        NineHomeDashboard *owner = weakSelf;
+        if (!owner) return;
+        if (!token.length) {
+            [owner.spinner stopAnimating];
+            [owner showError:error.localizedDescription ?: @"Token non disponibile"];
+            return;
+        }
+
+        [NineLovelaceImport loadDashboardsWithServerURL:owner.auth.serverURL
+                                                  token:token
+                                             completion:^(NSArray *dashboards,
+                                                          NSError *listError) {
+            NineHomeDashboard *current = weakSelf;
+            [current.spinner stopAnimating];
+            if (!current) return;
+            if (listError) {
+                [current showError:listError.localizedDescription];
+                return;
+            }
+
+            if (dashboards.count == 1) {
+                [current importLovelaceDashboard:dashboards[0] token:token];
+                return;
+            }
+
+            UIAlertController *menu = [UIAlertController
+                alertControllerWithTitle:@"Dashboard Lovelace"
+                                 message:@"Scegli da quale dashboard importare."
+                          preferredStyle:UIAlertControllerStyleActionSheet];
+            for (NSDictionary *dashboard in dashboards) {
+                [menu addAction:[UIAlertAction actionWithTitle:dashboard[@"title"]
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *a) {
+                    [weakSelf importLovelaceDashboard:dashboard token:token];
+                }]];
+            }
+            [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                                     style:UIAlertActionStyleCancel
+                                                   handler:nil]];
+            [current presentSheet:menu];
+        }];
+    }];
+}
+
+- (void)importLovelaceDashboard:(NSDictionary *)dashboard token:(NSString *)token {
+    [self.spinner startAnimating];
+    __weak typeof(self) weakSelf = self;
+
+    [NineLovelaceImport loadConfigForURLPath:dashboard[@"url_path"]
+                                   serverURL:self.auth.serverURL
+                                       token:token
+                                  completion:^(NSDictionary *config, NSError *error) {
+        NineHomeDashboard *owner = weakSelf;
+        [owner.spinner stopAnimating];
+        if (!owner) return;
+        if (error) {
+            [owner showError:error.localizedDescription];
+            return;
+        }
+
+        NSMutableArray *views = [NSMutableArray array];
+        for (id view in [config[@"views"] isKindOfClass:[NSArray class]]
+                ? config[@"views"] : @[]) {
+            if ([view isKindOfClass:[NSDictionary class]]) [views addObject:view];
+        }
+
+        if (!views.count) {
+            [owner showError:@"La dashboard non contiene viste importabili."];
+            return;
+        }
+        if (views.count == 1) {
+            [owner importLovelaceViews:views];
+            return;
+        }
+
+        UIAlertController *menu = [UIAlertController
+            alertControllerWithTitle:@"Vista da importare"
+                             message:@"Ogni vista diventa una dashboard NineHA."
+                      preferredStyle:UIAlertControllerStyleActionSheet];
+        for (NSUInteger i = 0; i < views.count; i++) {
+            NSDictionary *view = views[i];
+            [menu addAction:[UIAlertAction
+                actionWithTitle:[NineLovelaceImport titleForView:view index:i]
+                          style:UIAlertActionStyleDefault
+                        handler:^(UIAlertAction *a) {
+                [weakSelf importLovelaceViews:@[view]];
+            }]];
+        }
+        [menu addAction:[UIAlertAction actionWithTitle:@"Tutte le viste"
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(UIAlertAction *a) {
+            [weakSelf importLovelaceViews:views];
+        }]];
+        [menu addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                                 style:UIAlertActionStyleCancel
+                                               handler:nil]];
+        [owner presentSheet:menu];
+    }];
+}
+
+- (void)importLovelaceViews:(NSArray *)views {
+    NSString *first = nil;
+    NSInteger created = 0, skipped = 0;
+
+    for (NSDictionary *view in views) {
+        NSInteger viewSkipped = 0;
+        NSArray *sections = [NineLovelaceImport sectionsForView:view
+                                                        skipped:&viewSkipped];
+        skipped += viewSkipped;
+        if (!sections.count) continue;
+
+        NSUInteger index = [views indexOfObject:view];
+        NSString *identifier = [NineCustomDashboards
+            createDashboardNamed:[NineLovelaceImport titleForView:view index:index]
+                        sections:sections
+                          server:self.auth.serverURL];
+        if (!first) first = identifier;
+        created++;
+    }
+
+    if (!first) {
+        [self showError:@"Nessuna card convertibile nella vista scelta."];
+        return;
+    }
+
+    [self showDashboard:first];
+
+    NSString *message = created == 1
+        ? @"Dashboard importata."
+        : [NSString stringWithFormat:@"%ld dashboard importate.", (long)created];
+    if (skipped) {
+        message = [message stringByAppendingFormat:
+            @"\n%ld card senza equivalente nativo sono state ignorate.", (long)skipped];
+    }
+    message = [message stringByAppendingString:created == 1
+        ? @"\nPuoi modificarla con la matita in alto."
+        : @"\nPuoi modificarle con la matita in alto."];
+    [self showError:message];
 }
 
 - (void)chooseDashboardForEntity:(NSString *)entityID source:(UIView *)source {
@@ -1007,9 +1189,11 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
                 if (![self.hiddenEntities containsObject:entityID])
                     [items addObject:entityID];
             }
-            if (!items.count) continue;
-            [sections addObject:@{@"title": section[@"title"] ?: @"",
-                                  @"items": items}];
+            NSString *style = section[@"style"] ?: @"tiles";
+            if (!items.count && ![style isEqualToString:@"clock"]) continue;
+            NSMutableDictionary *copy = [section mutableCopy];
+            copy[@"items"] = items;
+            [sections addObject:copy];
         }
         return @{@"areas": @[], @"sections": sections, @"badges": @[]};
     }
@@ -1137,7 +1321,9 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     [signature appendString:self.selectedTab];
     [signature appendFormat:@"|%@", self.currentDashboardID ?: @"-"];
     for (NSDictionary *section in model[@"sections"]) {
-        [signature appendFormat:@"|%@:", section[@"title"]];
+        [signature appendFormat:@"|%@/%@/%@/%@:", section[@"title"],
+            section[@"style"] ?: @"", section[@"format"] ?: @"",
+            [[section[@"names"] allValues] componentsJoinedByString:@","] ?: @""];
         [signature appendString:[section[@"items"] componentsJoinedByString:@","]];
     }
     [signature appendFormat:@"|%@", [model[@"badges"] componentsJoinedByString:@","]];
@@ -1339,7 +1525,8 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     // Poche sezioni: meglio colonne larghe che spazio vuoto.
     NSInteger sectionCount = 0;
     for (NSDictionary *section in model[@"sections"]) {
-        if ([section[@"items"] count]) sectionCount++;
+        if ([section[@"items"] count] ||
+            [section[@"style"] isEqual:@"clock"]) sectionCount++;
     }
     columns = MAX(1, MIN(columns, sectionCount));
     CGFloat columnWidth = floorf((usable -
@@ -1348,14 +1535,15 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     NSInteger perRow = MAX(1, MIN(4,
         (NSInteger)floorf((columnWidth + NineTileGap) /
                           (minimumTile + NineTileGap))));
-    CGFloat tileWidth = floorf((columnWidth - NineTileGap * (perRow - 1)) / perRow);
 
     NSMutableArray *heights = [NSMutableArray array];
     for (NSInteger i = 0; i < columns; i++) [heights addObject:@(y)];
 
     for (NSDictionary *section in model[@"sections"]) {
         NSArray *items = section[@"items"];
-        if (!items.count) continue;
+        NSString *style = section[@"style"] ?: @"tiles";
+        BOOL clock = [style isEqualToString:@"clock"];
+        if (!items.count && !clock) continue;
 
         NSInteger column = 0;
         for (NSInteger i = 1; i < columns; i++) {
@@ -1371,45 +1559,49 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
         [self.contentScroll addSubview:header];
         top += header.frame.size.height;
 
-        for (NSUInteger i = 0; i < items.count; i++) {
-            NSString *entityID = items[i];
-            NSInteger r = i / perRow, c = i % perRow;
-
-            NineTileView *tile = [[NineTileView alloc] initWithFrame:
-                CGRectMake(x + c * (tileWidth + NineTileGap),
-                           top + r * (NineTileHeight + NineTileGap),
-                           tileWidth, NineTileHeight)];
-            tile.entityID = entityID;
-
-            [tile addTarget:self
-                     action:@selector(tileTapped:)
-           forControlEvents:UIControlEventTouchUpInside];
-
-            __weak typeof(self) weakSelf = self;
-            tile.onIconTap = ^(NineTileView *view) {
-                [weakSelf quickActionForTile:view];
-            };
-
-            UILongPressGestureRecognizer *press =
-                [[UILongPressGestureRecognizer alloc]
-                    initWithTarget:self action:@selector(tileLongPressed:)];
-            press.minimumPressDuration = .5;
-            [tile addGestureRecognizer:press];
-
-            [self configureTile:tile];
-            [self.contentScroll addSubview:tile];
-
-            NSMutableArray *list = self.tilesByEntity[entityID];
-            if (!list) {
-                list = [NSMutableArray array];
-                self.tilesByEntity[entityID] = list;
-            }
-            [list addObject:tile];
-            [watched addObject:entityID];
+        if (clock) {
+            NineClockView *view = [[NineClockView alloc]
+                initWithFrame:CGRectMake(x, top, columnWidth, 132)];
+            view.twelveHour = [section[@"format"] isEqual:@"12"];
+            [self.contentScroll addSubview:view];
+            heights[column] = @(top + 132 + 20);
+            continue;
         }
 
-        NSInteger rowsCount = (items.count + perRow - 1) / perRow;
-        top += rowsCount * (NineTileHeight + NineTileGap) - NineTileGap;
+        if ([style isEqualToString:@"weather"]) {
+            NSString *entityID = items.firstObject;
+            NineWeatherView *view = [[NineWeatherView alloc]
+                initWithFrame:CGRectMake(x, top, columnWidth, 178)];
+            [self registerTile:view entityID:entityID name:nil watched:watched];
+            [self fetchForecastFor:entityID];
+            heights[column] = @(top + 178 + 20);
+            continue;
+        }
+
+        BOOL grid = [style isEqualToString:@"grid"];
+        NSInteger rowItems = grid ? (columnWidth >= 300 ? 3 : 2) : perRow;
+        CGFloat itemWidth = floorf((columnWidth - NineTileGap * (rowItems - 1)) / rowItems);
+        CGFloat itemHeight = grid ? 64 : NineTileHeight;
+        NSDictionary *names = section[@"names"];
+
+        for (NSUInteger i = 0; i < items.count; i++) {
+            NSString *entityID = items[i];
+            NSInteger r = i / rowItems, c = i % rowItems;
+            CGRect frame = CGRectMake(x + c * (itemWidth + NineTileGap),
+                                      top + r * (itemHeight + NineTileGap),
+                                      itemWidth, itemHeight);
+
+            NineTileView *tile = grid
+                ? [[NineValueView alloc] initWithFrame:frame]
+                : [[NineTileView alloc] initWithFrame:frame];
+            [self registerTile:tile entityID:entityID
+                          name:[names isKindOfClass:[NSDictionary class]]
+                              ? names[entityID] : nil
+                       watched:watched];
+        }
+
+        NSInteger rowsCount = (items.count + rowItems - 1) / rowItems;
+        top += rowsCount * (itemHeight + NineTileGap) - NineTileGap;
         heights[column] = @(top + 20);
     }
 
@@ -1437,6 +1629,93 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     self.contentScroll.contentSize =
         CGSizeMake(width, MAX(contentHeight + margin,
                               self.contentScroll.bounds.size.height + 1));
+}
+
+- (void)registerTile:(NineTileView *)tile
+            entityID:(NSString *)entityID
+                name:(NSString *)name
+             watched:(NSMutableSet *)watched {
+    if (!entityID.length) return;
+    tile.entityID = entityID;
+    tile.customName = name;
+
+    [tile addTarget:self
+             action:@selector(tileTapped:)
+   forControlEvents:UIControlEventTouchUpInside];
+
+    __weak typeof(self) weakSelf = self;
+    tile.onIconTap = ^(NineTileView *view) {
+        [weakSelf quickActionForTile:view];
+    };
+
+    UILongPressGestureRecognizer *press =
+        [[UILongPressGestureRecognizer alloc]
+            initWithTarget:self action:@selector(tileLongPressed:)];
+    press.minimumPressDuration = .5;
+    [tile addGestureRecognizer:press];
+
+    [self configureTile:tile];
+    [self.contentScroll addSubview:tile];
+
+    NSMutableArray *list = self.tilesByEntity[entityID];
+    if (!list) {
+        list = [NSMutableArray array];
+        self.tilesByEntity[entityID] = list;
+    }
+    [list addObject:tile];
+    [watched addObject:entityID];
+}
+
+#pragma mark - Previsioni meteo
+
+- (void)fetchForecastFor:(NSString *)entityID {
+    if (![entityID hasPrefix:@"weather."]) return;
+    if (!self.forecasts) self.forecasts = [NSMutableDictionary dictionary];
+    if (!self.forecastDates) self.forecastDates = [NSMutableDictionary dictionary];
+
+    NSDate *last = self.forecastDates[entityID];
+    if (last && -[last timeIntervalSinceNow] < 1800) return;
+    self.forecastDates[entityID] = [NSDate date];
+
+#ifdef NINEHA_DEMO
+    self.forecasts[entityID] = [NineDemoData forecast];
+    [self updateDisplayedEntities:[NSSet setWithObject:entityID]];
+    return;
+#endif
+
+    __weak typeof(self) weakSelf = self;
+    [self withToken:^(NSString *token, NSError *error) {
+        NineHomeDashboard *owner = weakSelf;
+        if (!owner || !token.length) return;
+
+        // Servizio di sola lettura con risposta (HA 2023.12+).
+        NSMutableURLRequest *request = [owner
+            requestForPath:@"/api/services/weather/get_forecasts?return_response"
+                     token:token];
+        if (!request) return;
+        request.HTTPMethod = @"POST";
+        request.HTTPBody = [NSJSONSerialization dataWithJSONObject:
+            @{@"entity_id": entityID, @"type": @"daily"} options:0 error:nil];
+        [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+        [owner createSession];
+        [[owner.session dataTaskWithRequest:request
+                          completionHandler:^(NSData *data, NSURLResponse *response,
+                                              NSError *networkError) {
+            id json = data.length ? [NSJSONSerialization JSONObjectWithData:data
+                options:0 error:nil] : nil;
+            id forecast = [json isKindOfClass:[NSDictionary class]]
+                ? json[@"service_response"][entityID][@"forecast"] : nil;
+            if (![forecast isKindOfClass:[NSArray class]]) return;
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NineHomeDashboard *current = weakSelf;
+                if (!current) return;
+                current.forecasts[entityID] = forecast;
+                [current updateDisplayedEntities:[NSSet setWithObject:entityID]];
+            });
+        }] resume];
+    }];
 }
 
 - (UIView *)headerForSection:(NSDictionary *)section width:(CGFloat)width {
@@ -1498,6 +1777,13 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     NSDictionary *entity = self.stateByID[entityID];
     NSDictionary *info = [self registryFor:entityID];
 
+    if ([tile isKindOfClass:[NineWeatherView class]]) {
+        NineWeatherView *weather = (NineWeatherView *)tile;
+        if (entity) [weather updateWithEntity:entity];
+        weather.forecast = self.forecasts[entityID];
+        return;
+    }
+
     if ([NineNASAdapter isNASEntity:entityID]) {
         [tile setName:[NineNASAdapter configuredTitle]
                       ?: (entity ? NEName(entity, info) : @"NAS")
@@ -1520,7 +1806,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
     BOOL unavailable = NEIsUnavailable(entity);
 
-    [tile setName:NEName(entity, info)
+    [tile setName:tile.customName ?: NEName(entity, info)
             state:NEStateText(entity, info)
              icon:NEIconName(entity, info)
             color:NEIconColor(entity)
@@ -2301,7 +2587,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 
         switch (action) {
             case 1: [self showDashboard:nil]; break;
-            case 9: [self createDashboardAddingEntity:nil]; break;
+            case 9: [self showNewDashboardMenu]; break;
             case 2: [self openList]; break;
             case 3: [self manualRefresh]; break;
             case 4: [self openServers]; break;
@@ -2589,6 +2875,38 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
             [[UIDevice currentDevice] setValue:@(orientation)
                                         forKey:@"orientation"];
             [UIViewController attemptRotationToDeviceOrientation];
+        } else if ([command isEqualToString:@"import"]) {
+            NSInteger index = argument.integerValue;
+            [self withToken:^(NSString *token, NSError *error) {
+                if (!token.length) return;
+                [NineLovelaceImport loadConfigForURLPath:nil
+                                               serverURL:self.auth.serverURL
+                                                   token:token
+                                              completion:^(NSDictionary *config, NSError *e) {
+                    NSArray *views = config[@"views"];
+                    if ([views isKindOfClass:[NSArray class]] &&
+                        index < (NSInteger)views.count) {
+                        [self importLovelaceViews:@[views[index]]];
+                    }
+                }];
+            }];
+        } else if ([command isEqualToString:@"lovelace"]) {
+            [self withToken:^(NSString *token, NSError *error) {
+                if (!token.length) return;
+                [NineWSRequest sendCommands:@[
+                    @{@"type": @"lovelace/dashboards/list"},
+                    @{@"type": @"lovelace/config", @"url_path": [NSNull null]}]
+                                  serverURL:self.auth.serverURL token:token
+                                 completion:^(NSArray *results, NSError *wsError) {
+                    NSString *caches = NSSearchPathForDirectoriesInDomains(
+                        NSCachesDirectory, NSUserDomainMask, YES).firstObject;
+                    id payload = results ?: @{@"error": wsError.localizedDescription ?: @"?"};
+                    NSData *json = [NSJSONSerialization dataWithJSONObject:payload
+                        options:NSJSONWritingPrettyPrinted error:nil];
+                    [json writeToFile:[caches stringByAppendingPathComponent:
+                        @"nineha-lovelace.json"] atomically:YES];
+                }];
+            }];
         } else if ([command isEqualToString:@"dump"]) {
             [self debugDump:argument];
         }

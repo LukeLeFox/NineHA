@@ -46,7 +46,31 @@ static NSString *NCDStartKey(NSString *server) {
                 }
             }
 
-            [sections addObject:@{@"title": title, @"items": items}];
+            NSString *style = section[@"style"];
+            if (![@[@"tiles", @"grid", @"clock", @"weather"] containsObject:style])
+                style = @"tiles";
+
+            NSMutableDictionary *names = [NSMutableDictionary dictionary];
+            id rawNames = section[@"names"];
+            if ([rawNames isKindOfClass:[NSDictionary class]]) {
+                for (id key in rawNames) {
+                    id value = rawNames[key];
+                    if ([key isKindOfClass:[NSString class]] &&
+                        [value isKindOfClass:[NSString class]] &&
+                        [value length] && [items containsObject:key]) {
+                        names[key] = value;
+                    }
+                }
+            }
+
+            NSMutableDictionary *clean = [@{
+                @"title": title, @"items": items, @"style": style
+            } mutableCopy];
+            if (names.count) clean[@"names"] = names;
+            if ([style isEqualToString:@"clock"]) {
+                clean[@"format"] = [section[@"format"] isEqual:@"12"] ? @"12" : @"24";
+            }
+            [sections addObject:clean];
         }
     }
 
@@ -103,6 +127,25 @@ static NSString *NCDStartKey(NSString *server) {
 
     [self storeDashboards:dashboards server:server];
     return identifier;
+}
+
++ (NSString *)createDashboardNamed:(NSString *)name
+                          sections:(NSArray *)sections
+                            server:(NSString *)server {
+    NSString *identifier = [self createDashboardNamed:name server:server];
+    NSMutableDictionary *dashboard =
+        [[self dashboardWithID:identifier server:server] mutableCopy];
+    dashboard[@"sections"] = sections.count
+        ? sections : @[@{@"title": @"", @"items": @[]}];
+    [self saveDashboard:dashboard server:server];
+    return identifier;
+}
+
++ (NSString *)titleForStyle:(NSString *)style {
+    if ([style isEqualToString:@"grid"]) return @"Griglia valori";
+    if ([style isEqualToString:@"clock"]) return @"Orologio";
+    if ([style isEqualToString:@"weather"]) return @"Meteo";
+    return @"Tile";
 }
 
 + (void)saveDashboard:(NSDictionary *)dashboard server:(NSString *)server {

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0 build 50
+
+- importazione di una vista Lovelace come dashboard personalizzata (menu
+  laterale > Nuova dashboard > Importa da Lovelace): card entities, glance,
+  griglie di sensori, stack, meteo, orologio e card singole vengono
+  convertite in sezioni native, con i nomi personalizzati; le card senza
+  equivalente vengono conteggiate e ignorate;
+- nuovi tipi di sezione nelle dashboard personalizzate: griglia valori,
+  orologio (12/24h) e meteo con previsioni a 5 giorni
+  (`weather.get_forecasts`);
+- nomi personalizzati per le entità di ogni sezione, modificabili
+  dall'editor.
+
 ## 0.8.1 build 49
 
 - dashboard personalizzate: create dal menu laterale, con sezioni ed entità

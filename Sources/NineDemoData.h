@@ -15,6 +15,7 @@
 + (NSArray *)areaNames;
 + (NSDictionary *)areaIcons;
 + (NSDictionary *)registry;
++ (NSArray *)forecast;
 
 @end
 

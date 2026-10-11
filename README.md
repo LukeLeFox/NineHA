@@ -47,7 +47,10 @@ indirizzo riservato alla documentazione: nessun dato reale.
 - controlli per aspirapolvere (avvio, stop, base, velocità) e telecomando
   per Android TV / Fire TV con croce direzionale, home, indietro e volume;
 - dashboard personalizzate con sezioni ed entità scelte, gestite dal menu
-  laterale e impostabili come schermata iniziale;
+  laterale e impostabili come schermata iniziale, con sezioni a tile,
+  griglia valori, orologio e meteo con previsioni;
+- importazione una tantum di una vista Lovelace come dashboard
+  personalizzata nativa;
 - tocco sull'icona per accendere/spegnere, tocco sul tile per i dettagli,
   pressione prolungata per preferiti e per nascondere entità;
 - aggiornamenti live tramite WebSocket, con fallback REST;
@@ -58,6 +61,8 @@ indirizzo riservato alla documentazione: nessun dato reale.
 Dalla versione 0.8 il Lovelace Rebuilder e la Lovelace in WebView sono stati
 rimossi: la dashboard viene costruita dai registri di stanze ed entità di
 Home Assistant, come la panoramica automatica dell'app ufficiale.
+Dalla 0.9 una vista Lovelace esistente può essere importata una sola volta
+come dashboard personalizzata, senza reintrodurre il motore Lovelace.
 
 ## Requisiti
 
