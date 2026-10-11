@@ -14,7 +14,8 @@
   cadere la connessione live dopo circa un minuto;
 - valori numerici con formato italiano e precisione del registro, date
   relative ("2 giorni fa") per i sensori timestamp;
-- aggiornamento live predefinito.
+- aggiornamento live predefinito;
+- casa dimostrativa (`make DEMO=1`) e nuove schermate anonimizzate.
 
 ## 0.7.8 build 47
 

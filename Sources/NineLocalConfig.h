@@ -7,7 +7,10 @@
  * customize it locally. The user file is ignored by Git and must never
  * contain access tokens or other credentials.
  */
-#if __has_include("NineLocalConfig.user.h")
+#if defined(NINEHA_DEMO)
+// Le build dimostrative usano solo gli identificativi di esempio.
+#import "NineLocalConfig.user.h.example"
+#elif !defined(NINEHA_PUBLIC_BUILD) && __has_include("NineLocalConfig.user.h")
 #import "NineLocalConfig.user.h"
 #endif
 

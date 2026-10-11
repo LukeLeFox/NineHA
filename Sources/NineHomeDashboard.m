@@ -1,6 +1,7 @@
 #import "NineHomeDashboard.h"
 #import "NineAreasLoader.h"
 #import "NineControls.h"
+#import "NineDemoData.h"
 #import "NineDashboard.h"
 #import "NineEntity.h"
 #import "NineIcons.h"
@@ -320,6 +321,10 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 }
 
 - (void)fetchInstanceName {
+#ifdef NINEHA_DEMO
+    self.title = [NineDemoData locationName];
+    return;
+#endif
     __weak typeof(self) weakSelf = self;
 
     [self withToken:^(NSString *token, NSError *error) {
@@ -359,6 +364,16 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 }
 
 - (void)fetchAreas {
+#ifdef NINEHA_DEMO
+    self.areaByID = [NineDemoData entityAreas];
+    self.areaNames = [NineDemoData areaNames];
+    self.areaIcons = [NineDemoData areaIcons];
+    self.registry = [NineDemoData registry];
+    self.areasStatus = [NSString stringWithFormat:@"%lu stanze",
+        (unsigned long)self.areaNames.count];
+    [self rebuildIfNeeded:NO];
+    return;
+#endif
     NSUInteger generation = ++self.areaFetchGeneration;
 
     [self.areasLoader cancel];
@@ -420,6 +435,13 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 }
 
 - (void)fetchStates {
+#ifdef NINEHA_DEMO
+    if (!self.loadedOnce) {
+        self.loading = YES;
+        [self finishLoad:[NineDemoData states] message:nil];
+    }
+    return;
+#endif
     if (self.loading) return;
     self.loading = YES;
     [self createSession];
@@ -592,6 +614,10 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
 }
 
 - (void)connectLive {
+#ifdef NINEHA_DEMO
+    self.liveConnected = YES;
+    return;
+#endif
     if (![self wantsLive] || !self.view.window ||
         self.live || self.liveConnecting) return;
 
@@ -1809,6 +1835,10 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
              domain:(NSString *)domain
             payload:(NSDictionary *)payload
          completion:(void (^)(BOOL ok))completion {
+#ifdef NINEHA_DEMO
+    if (completion) completion(YES);
+    return;
+#endif
 
     __weak typeof(self) weakSelf = self;
 

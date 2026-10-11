@@ -10,8 +10,18 @@ Rebuilder e le funzioni principali risultano operativi.
 
 ## Screenshot
 
-Le schermate in `docs/screenshots` si riferiscono alla serie 0.7 e verranno
-sostituite con nuove immagini anonimizzate dell'interfaccia 0.8.
+| Panoramica | Scheda stanza |
+|---|---|
+| ![Panoramica per stanze](docs/screenshots/nineha-home.png) | ![Scheda di una stanza](docs/screenshots/nineha-room.png) |
+| Luminosità | Adattatore NAS |
+| ![Pannello dettagli di una luce](docs/screenshots/nineha-light.png) | ![Pannello dettagli del NAS](docs/screenshots/nineha-nas.png) |
+| Termostato | Menu |
+| ![Pannello dettagli del termostato](docs/screenshots/nineha-climate.png) | ![Menu laterale](docs/screenshots/nineha-menu.png) |
+| Accesso | Verticale |
+| ![Schermata di accesso](docs/screenshots/nineha-login.png) | ![Panoramica in verticale](docs/screenshots/nineha-home-portrait.png) |
+
+Le schermate usano la casa dimostrativa inclusa (`make DEMO=1`) e un
+indirizzo riservato alla documentazione: nessun dato reale.
 
 ## Funzioni principali
 
@@ -51,13 +61,24 @@ export THEOS="$HOME/theos"
 make clean package FINALPACKAGE=1
 ```
 
+L'IPA pubblicata nelle release viene compilata con `PUBLIC=1`, che ignora
+l'eventuale `Sources/NineLocalConfig.user.h`.
+
 Il pacchetto IPA viene creato nella directory `packages/`.
+
+Per le schermate di documentazione esiste una build dimostrativa senza rete:
+
+```bash
+make clean package DEMO=1
+```
 
 ## Download
 
 La build finale precompilata per ARMv7 è disponibile qui:
 
-- [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa) (serie precedente)
+- [NineHA 0.8.0 build 48](Releases/NineHA-0.8.0-armv7.ipa)
+- [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa) (serie precedente,
+  con Lovelace Rebuilder)
 - [checksum SHA-256](Releases/SHA256SUMS.txt)
 
 ## Installazione
@@ -65,7 +86,7 @@ La build finale precompilata per ARMv7 è disponibile qui:
 Con il dispositivo collegato:
 
 ```bash
-ideviceinstaller install NineHA-0.7.8-armv7.ipa
+ideviceinstaller install NineHA-0.8.0-armv7.ipa
 ```
 
 Per aggiornare un'installazione già presente si può usare invece

@@ -21,6 +21,7 @@ NineHA_FILES = main.m \
 	Sources/NineRefreshSettingsController.m \
 	Sources/NineAreasLoader.m \
 	Sources/NineLiveSocket.m \
+	Sources/NineDemoData.m \
 	ThirdParty/SocketRocket/SRWebSocket.m
 
 NineHA_FRAMEWORKS = UIKit Foundation Security CFNetwork CoreText
@@ -30,6 +31,16 @@ NineHA_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR)/ThirdParty/SocketRocket
 # Comandi di collaudo via SSH (solo build locali: make DEBUGHOOKS=1).
 ifeq ($(DEBUGHOOKS),1)
 NineHA_CFLAGS += -DNINEHA_DEBUG_HOOKS=1
+endif
+
+# IPA pubblica: ignora NineLocalConfig.user.h (make PUBLIC=1).
+ifeq ($(PUBLIC),1)
+NineHA_CFLAGS += -DNINEHA_PUBLIC_BUILD=1
+endif
+
+# Casa dimostrativa senza rete per gli screenshot: make DEMO=1.
+ifeq ($(DEMO),1)
+NineHA_CFLAGS += -DNINEHA_DEMO=1 -DNINEHA_DEBUG_HOOKS=1
 endif
 
 include $(THEOS_MAKE_PATH)/application.mk

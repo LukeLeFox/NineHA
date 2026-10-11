@@ -3,6 +3,7 @@
 #import "Sources/NineHomeDashboard.h"
 #import "Sources/NineIcons.h"
 #import "Sources/NineTheme.h"
+#import "Sources/NineDemoData.h"
 
 @interface NineSetupController : UIViewController
 
@@ -278,6 +279,12 @@
          "La password non viene salvata sul dispositivo.";
 
     [self.column addSubview:self.output];
+
+#ifdef NINEHA_DEMO
+    self.serverField.text = [NineDemoData serverURL];
+    self.userField.text = @"demo";
+    self.auth.serverURL = [NineDemoData serverURL];
+#endif
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -894,11 +901,16 @@ didFinishLaunchingWithOptions:(NSDictionary *)options {
     // Carichiamo i campi e le preferenze della schermata iniziale.
     (void)self.home.view;
 
+#ifdef NINEHA_DEMO
+    UIViewController *initial = [[NineHomeDashboard alloc]
+        initWithAuth:self.home.auth mode:@"manual"];
+#else
     // Preferenza dell'utente oppure server unico preesistente.
     [self.home loadDefaultProfileForLaunch];
 
     UIViewController *initial =
         [self.home initialDashboardIfAvailable];
+#endif
 
     if (initial) {
         [navigation setViewControllers:
