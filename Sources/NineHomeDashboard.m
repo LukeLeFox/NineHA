@@ -2849,6 +2849,30 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
                 [NineCustomDashboards saveDashboard:dash server:self.auth.serverURL];
             }
             [self showDashboard:identifier];
+        } else if ([command isEqualToString:@"sampledash"]) {
+            // Dashboard d'esempio con tutti i tipi di sezione.
+            NSString *identifier = [NineCustomDashboards
+                createDashboardNamed:argument.length ? argument : @"Bacheca"
+                            sections:@[
+                @{@"title": @"", @"style": @"weather", @"items": @[@"weather.casa"]},
+                @{@"title": @"", @"style": @"clock", @"format": @"24", @"items": @[]},
+                @{@"title": @"Luci", @"style": @"tiles", @"items": @[
+                    @"light.soggiorno_lampadario", @"light.soggiorno_led_tv",
+                    @"light.cucina_isola", @"light.studio_scrivania",
+                    @"switch.example_nas", @"vacuum.soggiorno_robot"],
+                  @"names": @{@"vacuum.soggiorno_robot": @"Robot"}},
+                @{@"title": @"Sensori", @"style": @"grid", @"items": @[
+                    @"sensor.soggiorno_temperatura", @"sensor.soggiorno_umidita",
+                    @"sensor.studio_co2", @"sensor.cucina_temperatura",
+                    @"sensor.camera_temperatura", @"sensor.bagno_umidita"],
+                  @"names": @{@"sensor.soggiorno_temperatura": @"Soggiorno",
+                              @"sensor.soggiorno_umidita": @"Soggiorno",
+                              @"sensor.studio_co2": @"Studio",
+                              @"sensor.cucina_temperatura": @"Cucina",
+                              @"sensor.camera_temperatura": @"Camera",
+                              @"sensor.bagno_umidita": @"Bagno"}}]
+                              server:self.auth.serverURL];
+            [self showDashboard:identifier];
         } else if ([command isEqualToString:@"showdash"]) {
             NSArray *all = [NineCustomDashboards dashboardsForServer:self.auth.serverURL];
             NSInteger index = argument.integerValue;

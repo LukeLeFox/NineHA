@@ -22,8 +22,10 @@ Rebuilder e le funzioni principali risultano operativi.
 | ![Pannello dettagli di una luce](docs/screenshots/nineha-light.png) | ![Pannello dettagli del NAS](docs/screenshots/nineha-nas.png) |
 | Aspirapolvere | Telecomando TV |
 | ![Pannello dell'aspirapolvere](docs/screenshots/nineha-vacuum.png) | ![Telecomando Android TV / Fire TV](docs/screenshots/nineha-tv-remote.png) |
-| Dashboard personalizzata | Editor della dashboard |
-| ![Dashboard personalizzata](docs/screenshots/nineha-custom-dashboard.png) | ![Editor della dashboard](docs/screenshots/nineha-dashboard-editor.png) |
+| Dashboard personalizzata | Meteo, orologio e griglia valori |
+| ![Dashboard personalizzata](docs/screenshots/nineha-custom-dashboard.png) | ![Card meteo, orologio e griglia valori](docs/screenshots/nineha-cards.png) |
+| Editor della dashboard | |
+| ![Editor della dashboard](docs/screenshots/nineha-dashboard-editor.png) | |
 | Termostato | Menu |
 | ![Pannello dettagli del termostato](docs/screenshots/nineha-climate.png) | ![Menu laterale](docs/screenshots/nineha-menu.png) |
 | Accesso | Verticale |
@@ -94,6 +96,7 @@ make clean package DEMO=1
 
 La build finale precompilata per ARMv7 è disponibile qui:
 
+- [NineHA 0.9.0 build 50](Releases/NineHA-0.9.0-armv7.ipa)
 - [NineHA 0.8.1 build 49](Releases/NineHA-0.8.1-armv7.ipa)
 - [NineHA 0.8.0 build 48](Releases/NineHA-0.8.0-armv7.ipa)
 - [NineHA 0.7.8 build 47](Releases/NineHA-0.7.8-armv7.ipa) (serie precedente,
@@ -105,12 +108,20 @@ La build finale precompilata per ARMv7 è disponibile qui:
 Con il dispositivo collegato:
 
 ```bash
-ideviceinstaller install NineHA-0.8.1-armv7.ipa
+ideviceinstaller install NineHA-0.9.0-armv7.ipa
 ```
 
 Per aggiornare un'installazione già presente si può usare invece
 `ideviceinstaller upgrade`. Il nome dell'IPA generata localmente può variare in
 base alla versione di Theos.
+
+## Dashboard personalizzate
+
+Le dashboard personalizzate si creano dal menu laterale (Nuova dashboard),
+vuote oppure importando una vista Lovelace, e si modificano o eliminano dalla
+matita in alto. Sono salvate soltanto sul dispositivo, per ogni server:
+l'importazione legge la configurazione Lovelace ma non scrive mai nulla
+nell'istanza Home Assistant.
 
 ## Accesso con nome utente e password
 

@@ -11,7 +11,9 @@
   orologio (12/24h) e meteo con previsioni a 5 giorni
   (`weather.get_forecasts`);
 - nomi personalizzati per le entità di ogni sezione, modificabili
-  dall'editor.
+  dall'editor;
+- le dashboard restano salvate solo sul dispositivo: nessuna scrittura
+  sulla configurazione Lovelace dell'istanza.
 
 ## 0.8.1 build 49
 
